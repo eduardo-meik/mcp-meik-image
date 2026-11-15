@@ -86,6 +86,8 @@ def test_all_tools_are_registered(isolated_env) -> None:
         "generate_image",
         "generate_pitch_slide_visual",
         "list_generated_images",
+        "media_server_status",
+        "publish_asset",
         "show_saved_image",
     ]
 

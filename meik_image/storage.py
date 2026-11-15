@@ -38,7 +38,6 @@ def slugify(value: str, max_words: int = 6) -> str:
     words = re.findall(r"[a-z0-9]+", ascii_text)[:max_words]
     return "-".join(words) or "meik-image"
 
-
 class AssetStore:
     """Writes renders under a root directory and reads them back safely."""
 
@@ -66,6 +65,7 @@ class AssetStore:
         *,
         slug: str,
         metadata: dict[str, Any],
+        filename: str | None = None,
     ) -> StoredAsset | None:
         if self._root is None:
             return None
@@ -76,8 +76,13 @@ class AssetStore:
             folder.mkdir(parents=True, exist_ok=True)
 
             media = sniff_media_type(data, media_type)
-            asset_id = f"{slugify(slug)}-{datetime.now().strftime('%H%M%S')}-{uuid.uuid4().hex[:6]}"
-            path = folder / f"{asset_id}.{extension_for(media)}"
+            if filename:
+                stem = Path(filename).stem
+                asset_id = slugify(stem, max_words=12)
+                path = folder / f"{asset_id}.{extension_for(media)}"
+            else:
+                asset_id = f"{slugify(slug)}-{datetime.now().strftime('%H%M%S')}-{uuid.uuid4().hex[:6]}"
+                path = folder / f"{asset_id}.{extension_for(media)}"
             path.write_bytes(data)
 
             created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")

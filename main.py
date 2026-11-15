@@ -36,11 +36,18 @@ Flujo recomendado:
 3. Pitch deck: `generate_pitch_slide_visual` para cada slide y `generate_deck_background` (theme dark).
 4. Para todo lo demás usa `generate_image` con style/palette explícitos.
 
+Entrega (parámetro `output` en cada herramienta de generación):
+- `width`/`height` + `fit` producen un tamaño exacto en píxeles (Recraft sólo entrega proporciones).
+- `format` (webp por defecto, o jpeg/png/avif), `quality` y `max_kb` controlan peso.
+- Con el media server configurado, cada imagen se publica y el manifiesto trae `public_url`.
+  Usa `media_server_status` si la publicación falla y `publish_asset` para reintentar.
+
 Reglas de uso:
 - Nunca pidas palabras o letras dentro de la imagen: el copy se compone en HTML o en la slide.
 - Usa siempre las paletas brand-dark o brand-light salvo que se pida otra cosa.
+- Para blog prefiere 1200x630 en webp/jpeg con max_kb 250; para slides usa 1920x1080.
 - Cada herramienta devuelve las imágenes inline (para verlas) y un JSON con prompt, coste,
-  dimensiones y ruta del archivo original cuando el servidor corre en local.
+  dimensiones, formato, peso, ruta local y URL pública.
 - El texto alternativo se entrega como `alt_text_hint`: refínalo antes de publicarlo.
 """
 

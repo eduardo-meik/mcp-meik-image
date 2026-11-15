@@ -2,3 +2,4 @@ fastmcp==4.2.0
 httpx==0.28.1
 pillow==13.0.0
 python-dotenv==1.2.4
+paramiko==5.1.0

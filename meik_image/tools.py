@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from typing import Annotated, Any, Literal
+from uuid import uuid4
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.utilities.types import Image
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from . import prompts
 from .brand import (
@@ -31,8 +33,10 @@ from .brand import (
 )
 from .config import load_settings
 from .imaging import extension_for, fit_inline
+from .media import MediaError, MediaPublisher, publisher_from_settings
 from .openrouter import GeneratedImage, GenerationResult, ImageGenerationError, OpenRouterImageClient
-from .storage import AssetStore
+from .optimize import extension_of, normalize_format, optimize_image
+from .storage import AssetStore, slugify
 
 logger = logging.getLogger("meik_image.tools")
 
@@ -44,6 +48,43 @@ TextSpace = Literal[tuple(sorted(TEXT_SPACES))]  # type: ignore[valid-type]
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
 GENERATES = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True)
+
+
+class OutputSpec(BaseModel):
+    """Tamaño, formato y publicación de la imagen entregada."""
+
+    format: Literal["webp", "jpeg", "png", "avif", "auto"] = Field(
+        "auto",
+        description=(
+            "Formato de salida. 'auto' usa el del servidor (webp por defecto). "
+            "webp/jpeg son los más livianos para blog; png no pierde calidad; avif comprime más pero "
+            "tarda más en codificar."
+        ),
+    )
+    quality: int | None = Field(
+        None, ge=40, le=100, description="Calidad 40-100. Si falta se usa 82 (webp), 85 (jpeg), 60 (avif)."
+    )
+    width: int | None = Field(
+        None, ge=64, le=4096, description="Ancho exacto en píxeles. Recraft sólo entrega proporciones, así que el recorte/escala se hace aquí."
+    )
+    height: int | None = Field(None, ge=64, le=4096, description="Alto exacto en píxeles.")
+    fit: Literal["cover", "contain", "stretch"] = Field(
+        "cover",
+        description=(
+            "Cómo encajar el tamaño exacto: 'cover' recorta para llenar (recomendado), "
+            "'contain' agrega relleno, 'stretch' deforma."
+        ),
+    )
+    max_kb: int | None = Field(
+        None, ge=10, le=5000, description="Peso máximo del archivo en KB; baja calidad/escala hasta cumplirlo."
+    )
+    publish: bool = Field(
+        True,
+        description=(
+            "Subir la imagen al media server (cPanel) y devolver la URL pública. "
+            "Si el servidor no está configurado se ignora sin fallar."
+        ),
+    )
 
 
 def _store() -> AssetStore:
@@ -63,32 +104,73 @@ def _deliver(
     prompt: str,
     slug: str,
     meta: dict[str, Any],
+    output: OutputSpec | None = None,
 ) -> list[Any]:
-    """Save full-resolution renders, then return inline images plus a JSON manifest."""
+    """Optimize each render, save it locally, publish it, then return it inline."""
     settings = load_settings()
     store = _store()
+    publisher = MediaPublisher(settings.media)
+    spec = output or OutputSpec()
+    try:
+        fmt = normalize_format(spec.format, settings.output_format)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+
     content: list[Any] = []
     images_meta: list[dict[str, Any]] = []
+    publish_errors: list[str] = []
+    stamp = datetime.now().strftime("%H%M%S")
 
     for index, generated in enumerate(result.images, start=1):
-        entry: dict[str, Any] = {"index": index}
-        asset = store.save(
+        processed = optimize_image(
             generated.data,
             generated.media_type,
+            output_format=fmt,
+            quality=spec.quality,
+            width=spec.width,
+            height=spec.height,
+            fit=spec.fit,
+            max_kb=spec.max_kb,
+        )
+        filename = f"{slugify(slug)}-{stamp}-{uuid4().hex[:6]}.{extension_of(processed)}"
+        entry: dict[str, Any] = {
+            "index": index,
+            "format": processed.fmt,
+            "bytes": processed.size_bytes,
+            "width": processed.width,
+            "height": processed.height,
+            "optimization": list(processed.steps),
+        }
+
+        asset = store.save(
+            processed.data,
+            processed.media_type,
             slug=slug,
+            filename=filename,
             metadata={
                 "prompt": prompt,
                 "model": result.model,
                 "aspect_ratio": result.aspect_ratio,
+                "format": processed.fmt,
+                "optimization": list(processed.steps),
                 **meta,
             },
         )
         if asset is not None:
             entry["asset_id"] = asset.asset_id
             entry["saved_to"] = str(asset.path)
-            entry["bytes"] = asset.bytes_written
 
-        payload = fit_inline(generated.data, generated.media_type, settings.inline_max_chars)
+        if spec.publish and publisher.configured:
+            try:
+                published = publisher.publish(processed.data, filename)
+                entry["public_url"] = published.url
+                entry["remote_path"] = published.remote_path
+                entry["published_via"] = published.transport
+            except MediaError as exc:
+                entry["publish_error"] = str(exc)
+                publish_errors.append(f"{filename}: {exc}")
+
+        payload = fit_inline(processed.data, processed.media_type, settings.inline_max_chars)
         entry["inline"] = {
             "media_type": payload.media_type,
             "width": payload.width,
@@ -99,7 +181,7 @@ def _deliver(
         images_meta.append(entry)
         content.append(Image(data=payload.data, format=extension_for(payload.media_type)))
 
-    manifest = {
+    manifest: dict[str, Any] = {
         "status": "ok",
         "model": result.model,
         "aspect_ratio": result.aspect_ratio,
@@ -108,22 +190,37 @@ def _deliver(
         "duration_seconds": result.duration_seconds,
         "prompt": prompt,
         **meta,
+        "output": {
+            "format": fmt,
+            "requested": spec.model_dump(exclude_none=True),
+            "media_server_configured": publisher.configured,
+        },
         "images": images_meta,
         "storage": {
             "enabled": store.enabled,
             "root": str(store.root) if store.root else None,
         },
     }
+
+    notes: list[str] = []
     if not store.enabled:
-        manifest["note"] = (
-            "Almacenamiento local deshabilitado (entorno remoto): usa la imagen inline de esta "
-            "respuesta, no hay archivo persistente en el servidor."
+        notes.append(
+            "Almacenamiento local deshabilitado (entorno remoto): no hay archivo persistente en el servidor."
         )
-    elif any(entry["inline"]["downscaled_for_client"] for entry in images_meta):
-        manifest["note"] = (
-            "La imagen inline se redujo para caber en el límite del cliente; "
-            "el archivo a resolución completa está en saved_to."
+    if spec.publish and not publisher.configured:
+        notes.append(
+            "Publicación omitida: el media server no está configurado "
+            "(MEIK_MEDIA_HOST/USER/PASSWORD/REMOTE_DIR/BASE_URL)."
         )
+    if publish_errors:
+        notes.append("Falló la publicación en el media server: " + " | ".join(publish_errors))
+    if any(entry["inline"]["downscaled_for_client"] for entry in images_meta) and not publish_errors:
+        notes.append(
+            "La copia inline se recomprimió para caber en el límite del cliente; "
+            "usa public_url o saved_to para la versión definitiva."
+        )
+    if notes:
+        manifest["notes"] = notes
 
     content.append(json.dumps(manifest, ensure_ascii=False, indent=2))
     return content
@@ -239,6 +336,10 @@ def register_tools(mcp: FastMCP) -> None:
             ),
         ] = False,
         slug: Annotated[str | None, Field(description="Nombre de archivo base. Si falta, se deriva del prompt.")] = None,
+        output: Annotated[
+            OutputSpec | None,
+            Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
+        ] = None,
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
@@ -268,6 +369,7 @@ def register_tools(mcp: FastMCP) -> None:
             result,
             prompt=final_prompt,
             slug=file_slug,
+            output=output,
             meta={
                 "kind": "freeform",
                 "style": resolved_style.id,
@@ -309,6 +411,10 @@ def register_tools(mcp: FastMCP) -> None:
         mood: Annotated[str | None, Field(description="Tono emocional de la marca.")] = None,
         strict_palette: Annotated[bool, Field(description="Forzar colores de marca en el proveedor.")] = True,
         allow_text: Annotated[bool, Field(description="Permitir texto dentro de la imagen.")] = False,
+        output: Annotated[
+            OutputSpec | None,
+            Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
+        ] = None,
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
@@ -338,6 +444,7 @@ def register_tools(mcp: FastMCP) -> None:
             result,
             prompt=final_prompt,
             slug=f"blog-hero-{title}",
+            output=output,
             meta={
                 "kind": "blog-hero",
                 "title": title,
@@ -371,6 +478,10 @@ def register_tools(mcp: FastMCP) -> None:
         mood: Annotated[str | None, Field(description="Tono emocional.")] = None,
         strict_palette: Annotated[bool, Field(description="Forzar colores de marca.")] = True,
         allow_text: Annotated[bool, Field(description="Permitir texto dentro de la imagen.")] = False,
+        output: Annotated[
+            OutputSpec | None,
+            Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
+        ] = None,
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
@@ -397,6 +508,7 @@ def register_tools(mcp: FastMCP) -> None:
             result,
             prompt=final_prompt,
             slug=f"blog-figura-{concept}",
+            output=output,
             meta={
                 "kind": "blog-figure",
                 "concept": concept,
@@ -438,6 +550,10 @@ def register_tools(mcp: FastMCP) -> None:
         n: Annotated[int, Field(ge=1, le=6, description="Cantidad de variantes.")] = 1,
         strict_palette: Annotated[bool, Field(description="Forzar colores de marca.")] = True,
         allow_text: Annotated[bool, Field(description="Permitir texto dentro de la imagen.")] = False,
+        output: Annotated[
+            OutputSpec | None,
+            Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
+        ] = None,
     ) -> list[Any]:
         try:
             resolved_slide = resolve_slide_type(slide_type)
@@ -468,6 +584,7 @@ def register_tools(mcp: FastMCP) -> None:
             result,
             prompt=final_prompt,
             slug=f"slide-{resolved_slide.id}-{title}",
+            output=output,
             meta={
                 "kind": "pitch-slide",
                 "slide_type": resolved_slide.id,
@@ -508,6 +625,10 @@ def register_tools(mcp: FastMCP) -> None:
         palette: Annotated[PaletteName, Field(description="Paleta de marca.")] = "brand-dark",
         n: Annotated[int, Field(ge=1, le=6, description="Cantidad de variantes.")] = 1,
         strict_palette: Annotated[bool, Field(description="Forzar colores de marca.")] = True,
+        output: Annotated[
+            OutputSpec | None,
+            Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
+        ] = None,
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
@@ -533,6 +654,7 @@ def register_tools(mcp: FastMCP) -> None:
             result,
             prompt=final_prompt,
             slug=f"deck-fondo-{theme}",
+            output=output,
             meta={
                 "kind": "deck-background",
                 "theme": theme,
@@ -604,6 +726,101 @@ def register_tools(mcp: FastMCP) -> None:
             Image(data=payload.data, format=extension_for(payload.media_type)),
             json.dumps(manifest, ensure_ascii=False, indent=2),
         ]
+
+    @mcp.tool(
+        name="publish_asset",
+        description=(
+            "Optimiza y publica en el media server (cPanel) una imagen ya generada, por asset_id. "
+            "Útil para reintentar una subida fallida o publicar en otro tamaño/formato."
+        ),
+        annotations=GENERATES,
+        output_schema=None,
+    )
+    def publish_asset(
+        asset_id: Annotated[str, Field(description="asset_id de list_generated_images.")],
+        output: Annotated[
+            OutputSpec | None,
+            Field(description="Tamaño y formato antes de subir. La publicación se fuerza aunque publish=false."),
+        ] = None,
+    ) -> list[Any]:
+        store = _store()
+        loaded = store.load(asset_id)
+        if loaded is None:
+            raise ToolError(f"No encontré el asset '{asset_id}' en el almacenamiento local.")
+
+        data, media, sidecar = loaded
+        spec = output or OutputSpec()
+        settings = load_settings()
+        try:
+            processed = optimize_image(
+                data,
+                media,
+                output_format=normalize_format(spec.format, settings.output_format),
+                quality=spec.quality,
+                width=spec.width,
+                height=spec.height,
+                fit=spec.fit,
+                max_kb=spec.max_kb,
+            )
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
+        publisher = publisher_from_settings()
+        filename = f"{sidecar.get('asset_id', asset_id)}-{processed.width}x{processed.height}.{extension_of(processed)}"
+        published = publisher.publish(processed.data, filename)
+
+        payload = fit_inline(processed.data, processed.media_type, settings.inline_max_chars)
+        manifest = {
+            "status": "ok",
+            "asset_id": sidecar.get("asset_id", asset_id),
+            "public_url": published.url,
+            "remote_path": published.remote_path,
+            "published_via": published.transport,
+            "format": processed.fmt,
+            "bytes": processed.size_bytes,
+            "width": processed.width,
+            "height": processed.height,
+            "optimization": list(processed.steps),
+            "prompt": sidecar.get("prompt"),
+        }
+        return [
+            Image(data=payload.data, format=extension_for(payload.media_type)),
+            json.dumps(manifest, ensure_ascii=False, indent=2),
+        ]
+
+    @mcp.tool(
+        name="media_server_status",
+        description=(
+            "Diagnostica la conexión al media server (SFTP/FTP) y muestra el modo, host, carpeta "
+            "remota y URL base configurados. Úsalo cuando una publicación falle."
+        ),
+        annotations=READ_ONLY,
+        output_schema=None,
+    )
+    def media_server_status() -> str:
+        settings = load_settings()
+        publisher = MediaPublisher(settings.media)
+        status = publisher.status()
+        payload: dict[str, Any] = {
+            "configured": status.configured,
+            "ok": status.ok,
+            "mode": status.mode,
+            "detail": status.detail,
+            "host": status.host,
+            "remote_dir": status.remote_dir,
+            "base_url": status.base_url,
+            "transport": status.transport,
+            "subdir_by_date": settings.media.subdir_by_date,
+            "output_default_format": settings.output_format,
+        }
+        if status.extra:
+            payload["extra"] = status.extra
+        if not status.configured:
+            payload["how_to_configure"] = (
+                "En .env define MEIK_MEDIA_HOST, MEIK_MEDIA_USER, MEIK_MEDIA_PASSWORD, "
+                "MEIK_MEDIA_REMOTE_DIR y MEIK_MEDIA_BASE_URL. Modo: MEIK_MEDIA_MODE=sftp|ftp|ftps."
+            )
+        return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 __all__ = ["register_tools", "GeneratedImage", "GenerationResult"]

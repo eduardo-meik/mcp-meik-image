@@ -19,8 +19,13 @@ a resolución completa cuando el servidor corre en local.
 | `generate_blog_figure` | Figura interior del artículo, composición centrada | 4:3 |
 | `generate_pitch_slide_visual` | Visual por arquetipo de slide (`problem`, `solution`, `traction`, …) | 16:9 |
 | `generate_deck_background` | Fondo de slides de baja intensidad para poner texto encima | 16:9 |
+| `publish_asset` | Optimiza y sube al media server una imagen ya generada | Imagen + URL |
+| `media_server_status` | Diagnostica la conexión SFTP/FTP y la carpeta remota | JSON |
 | `list_generated_images` | Lista los assets guardados en local (solo con disco) | JSON |
 | `show_saved_image` | Vuelve a mostrar inline un asset guardado | Imagen |
+
+Todas las herramientas de generación aceptan `output` para controlar tamaño, formato, peso y publicación
+(ver [Tamaño, formato y peso](#tamaño-formato-y-peso)).
 
 Estilos: `abstract-geometric`, `gradient-mesh`, `quiet-surface`, `isometric-tech`, `flat-vector`,
 `line-art`, `editorial-photo`, `data-viz`, `glass-ui`, `topographic`, `collage`, `blueprint`.
@@ -116,12 +121,81 @@ Plan Personal de Horizon: gratis, 200 servidores MCP, escala a cero cuando está
 | --- | --- | --- |
 | `OPENROUTER_API_KEY` | — | Requerida. Clave `sk-or-v1-…` |
 | `MEIK_IMAGE_MODEL` | `recraft/recraft-v4.1-flash-v2:free` | Modelo de imagen |
+| `MEIK_OUTPUT_FORMAT` | `webp` | Formato por defecto si no se especifica en `output` |
+| `MEIK_OUTPUT_QUALITY` | `82` | Calidad por defecto |
 | `MEIK_IMAGE_DIR` | `output` | Carpeta de originales. `off` desactiva el guardado |
 | `MEIK_INLINE_MAX_CHARS` | `120000` | Presupuesto de la imagen inline (límite de Claude ≈150k) |
 | `MEIK_IMAGE_TIMEOUT_SECONDS` | `180` | Timeout por llamada a OpenRouter |
 | `MEIK_IMAGE_MAX_RETRIES` | `2` | Reintentos ante 429/5xx/red |
 | `MEIK_APP_URL` / `MEIK_APP_NAME` | meiklabs.com / Meik Labs Image MCP | Cabeceras de atribución de OpenRouter |
 | `LOG_LEVEL` | `INFO` | Nivel de log |
+| `MEIK_MEDIA_MODE` | `sftp` si hay host | `sftp` \| `ftp` \| `ftps` \| `off` |
+| `MEIK_MEDIA_HOST` / `_PORT` / `_USER` / `_PASSWORD` | — | Credenciales del hosting |
+| `MEIK_MEDIA_REMOTE_DIR` | — | Carpeta remota de destino |
+| `MEIK_MEDIA_BASE_URL` | — | URL pública equivalente a esa carpeta |
+| `MEIK_MEDIA_SUBDIR_BY_DATE` | `true` | Organizar en subcarpetas `YYYY-MM-DD` |
+
+## Tamaño, formato y peso
+
+**¿Se puede pedir un tamaño exacto?** Recraft V4.1 Flash V2 sólo acepta proporción
+(`1:1`, `4:3`, `3:4`, `16:9`, `9:16`, `auto`) — no píxeles. El servidor produce el tamaño exacto
+después, con Pillow, así que igual obtienes lo que necesitas:
+
+```json
+{"width": 1200, "height": 630, "fit": "cover", "format": "webp", "quality": 82, "max_kb": 250}
+```
+
+| Campo | Efecto |
+| --- | --- |
+| `width` / `height` | Tamaño exacto en píxeles. Si omites uno, mantiene la proporción |
+| `fit` | `cover` recorta para llenar (recomendado), `contain` agrega relleno, `stretch` deforma |
+| `format` | `webp` (default), `jpeg`, `png`, `avif` |
+| `quality` | 40–100; por defecto 82 webp / 85 jpeg / 60 avif |
+| `max_kb` | Peso máximo; baja calidad y luego escala hasta cumplirlo |
+| `publish` | Subir al media server y devolver `public_url` |
+
+Medido sobre arte con gradientes (lo que devuelve Recraft a 1200×630):
+
+| Formato | Peso | Nota |
+| --- | --- | --- |
+| WebP q82 | **7 KB** | el más liviano, soporte universal, ideal para blog |
+| JPEG q85 | 24 KB | mejor compatibilidad con herramientas viejas |
+| PNG | 50 KB | sólo para zonas planas o si necesitas transparencia/lossless |
+| AVIF q60 | ~igual que WebP | comprime algo más, pero codifica más lento |
+
+En la prueba real de un hero 16:9: **1200×630, JPEG q88, 57 KB** (antes de optimizar el render pesaba ~840 KB).
+
+> Si pides más píxeles que el render original (p. ej. `width: 1920` sobre un 1344 px), el manifiesto
+> lo marca como `upscaled` — no gana detalle, sólo interpola.
+
+## Publicar en el media server (cPanel)
+
+Cuando el media server está configurado, cada generación se sube automáticamente y el manifiesto
+devuelve `public_url`, `remote_path` y el transporte usado. Los archivos van a
+`REMOTE_DIR[/YYYY-MM-DD]/slug-hora-id.ext`.
+
+```ini
+MEIK_MEDIA_MODE=sftp            # sftp | ftp | ftps | off
+MEIK_MEDIA_HOST=sftp.meiklabs.com
+MEIK_MEDIA_PORT=22
+MEIK_MEDIA_USER=usuario_cpanel
+MEIK_MEDIA_PASSWORD=clave
+MEIK_MEDIA_REMOTE_DIR=/home2/usuario/public_html/assets/blog/
+MEIK_MEDIA_BASE_URL=https://meiklabs.com/assets/blog
+MEIK_MEDIA_SUBDIR_BY_DATE=true
+```
+
+También se aceptan los nombres cortos `SFTP_HOST`, `SFTP_PORT`, `SFTP_USER`, `SFTP_PASS`,
+`REMOTE_DIR` y `BASE_URL` (útiles si ya venían de Bluehost).
+
+Resultado: `https://meiklabs.com/assets/blog/2026-11-15/blog-hero-titulo-103012-a1b2c3.webp`
+
+- **SFTP** necesita que el acceso SSH esté habilitado en cPanel (SSH Access → Manage SSH Keys/Enable).
+- Si SSH está deshabilitado, usa `MEIK_MEDIA_MODE=ftp` (o `ftps` para TLS explícito).
+- Usa `media_server_status` para probar la conexión sin generar nada; devuelve la causa exacta
+  (credenciales rechazadas, handshake cortado, host inalcanzable, carpeta inexistente).
+- Si una subida falla, la generación **no** falla: la imagen se entrega igual y `publish_error`
+  explica qué pasó. `publish_asset` reintenta con otro tamaño/formato.
 
 ## Cómo se comporta el modelo
 
@@ -145,6 +219,10 @@ de Claude (~150k caracteres). Por eso el servidor:
 El JSON que acompaña a cada imagen indica `downscaled_for_client`, dimensiones, `saved_to`,
 `asset_id`, `cost_usd`, `duration_seconds`, el prompt final y un `alt_text_hint`.
 
+> El archivo guardado en `saved_to` es ya la versión **optimizada** (formato, tamaño y peso que
+> pediste en `output`), es la misma que se publica en el media server. El render original del modelo
+> no se conserva: es reproducible volviendo a llamar la herramienta.
+
 ## Estructura
 
 ```
@@ -153,6 +231,8 @@ meik_image/config.py    Settings desde entorno/.env
 meik_image/brand.py     Paletas, estilos, formatos, arquetipos de slide
 meik_image/prompts.py   Composición de prompts y guardrails
 meik_image/openrouter.py Cliente de /api/v1/images con reintentos
+meik_image/optimize.py  Tamaño exacto, formatos (webp/jpeg/png/avif) y presupuesto de peso
+meik_image/media.py     Publicación SFTP/FTP al media server y diagnóstico
 meik_image/imaging.py   Detección de formato y ajuste del payload inline
 meik_image/storage.py   Guardado local + sidecar JSON, listado y carga segura
 meik_image/tools.py     Herramientas MCP
@@ -175,6 +255,9 @@ tests/                  pytest (sin red)
 | Aparecen letras o logos basura | No uses `allow_text`; el guardrail se desactiva con ese flag |
 | El cliente dice que la respuesta es demasiado grande | Baja `MEIK_INLINE_MAX_CHARS` (p. ej. 80000) |
 | `No encontré el asset …` | El almacenamiento local está en `off` o el asset vive en otro despliegue |
+| `El servidor rechazó el usuario/clave SFTP` | Clave incorrecta o SSH deshabilitado en cPanel → `MEIK_MEDIA_MODE=ftp` |
+| `El servidor cortó el handshake SSH` | SSH bloqueado/deshabilitado, puerto equivocado o bloqueo por intentos |
+| `publish_error` pero la imagen llega | La generación no falla por la subida; reintenta con `publish_asset` |
 
 ## Marca
 

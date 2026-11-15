@@ -271,3 +271,49 @@ def test_cpanel_token_alias_is_recognised(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert media.cpanel_token == "TOKEN-FROM-DOTENV"
     assert media.configured is True
+
+
+def test_cpanel_mode_derives_the_host_from_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Horizon deployments may only carry the cPanel token, not the SFTP host."""
+    for name in ("MEIK_MEDIA_HOST", "SFTP_HOST", "MEIK_MEDIA_KEY_PATH", "SFTP_KEY_PATH",
+                 "SFTP_PRIVATE_KEY_PATH", "MEIK_MEDIA_PASSWORD", "SFTP_PASS", "SSH_PASSWORD"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("MEIK_MEDIA_MODE", "cpanel")
+    monkeypatch.setenv("MEIK_MEDIA_USER", "meiklabs")
+    monkeypatch.setenv("MEIK_MEDIA_CPANEL_TOKEN", "TOKEN")
+    monkeypatch.setenv("MEIK_MEDIA_REMOTE_DIR", "/home2/meiklabs/public_html/website_x/img/blog/")
+    monkeypatch.setenv("MEIK_MEDIA_BASE_URL", "https://static.meiklabs.com/img/blog")
+
+    media = load_settings().media
+
+    assert media.cpanel_host == "static.meiklabs.com"
+    assert media.missing == []
+    assert media.configured is True
+
+
+def test_missing_lists_only_what_the_active_mode_needs(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MEIK_MEDIA_MODE", "cpanel")
+    monkeypatch.setenv("MEIK_MEDIA_CPANEL_TOKEN", "TOKEN")
+    monkeypatch.setenv("MEIK_MEDIA_REMOTE_DIR", "/home/meiklabs/public_html/img/blog/")
+    monkeypatch.setenv("MEIK_MEDIA_BASE_URL", "https://static.meiklabs.com/img/blog")
+    for name in ("MEIK_MEDIA_USER", "SFTP_USER", "MEIK_MEDIA_HOST", "SFTP_HOST"):
+        monkeypatch.delenv(name, raising=False)
+
+    media = load_settings().media
+
+    assert media.missing == ["MEIK_MEDIA_USER"]
+    assert media.configured is False
+
+
+def test_publish_error_names_the_missing_variables(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MEIK_MEDIA_MODE", "cpanel")
+    monkeypatch.delenv("MEIK_MEDIA_CPANEL_TOKEN", raising=False)
+    monkeypatch.delenv("CPANEL_API_TOKEN", raising=False)
+    monkeypatch.delenv("CPANEL_TOKEN", raising=False)
+
+    publisher = MediaPublisher(load_settings().media)
+
+    with pytest.raises(MediaError) as excinfo:
+        publisher.publish(b"binary", "x.webp")
+    assert "MEIK_MEDIA_CPANEL_TOKEN" in str(excinfo.value)
+    assert "modo actual: cpanel" in str(excinfo.value)

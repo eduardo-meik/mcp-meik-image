@@ -179,3 +179,65 @@ def test_fastmcp_json_points_at_a_loadable_entrypoint(isolated_env) -> None:
     assert config["source"]["entrypoint"] == "mcp"
     assert config["environment"]["requirements"] == "requirements.txt"
     assert config["deployment"]["transport"] == "http"
+
+
+def test_naming_mode_slug_produces_a_stable_filename(isolated_env, monkeypatch) -> None:
+    import json
+
+    from PIL import Image
+
+    from meik_image.openrouter import GeneratedImage, GenerationResult
+    from meik_image.tools import OutputSpec, _deliver
+
+    buffer = __import__("io").BytesIO()
+    Image.new("RGB", (1344, 768), (79, 0, 196)).save(buffer, format="WEBP")
+    result = GenerationResult(
+        images=(GeneratedImage(data=buffer.getvalue(), media_type="image/webp"),),
+        model="test",
+        aspect_ratio="16:9",
+        cost_usd=0.0,
+        duration_seconds=0.0,
+    )
+
+    monkeypatch.setenv("MEIK_MEDIA_MODE", "off")
+    monkeypatch.setenv("MEIK_MEDIA_NAMING", "slug")
+    content = _deliver(result, prompt="p", slug="Mi Post Sobre IA", output=OutputSpec(size="blog-hero"), meta={})
+    manifest = json.loads(content[-1])
+    assert manifest["images"][0]["saved_to"].endswith("mi-post-sobre-ia.webp")
+
+    monkeypatch.setenv("MEIK_MEDIA_NAMING", "unique")
+    content = _deliver(result, prompt="p", slug="Mi Post Sobre IA", output=OutputSpec(size="blog-hero"), meta={})
+    saved = json.loads(content[-1])["images"][0]["saved_to"]
+    assert "mi-post-sobre-ia-" in saved and saved.endswith(".webp")
+
+
+def test_output_filename_overrides_the_generated_name(isolated_env, monkeypatch) -> None:
+    import io
+    import json
+
+    from PIL import Image
+
+    from meik_image.openrouter import GeneratedImage, GenerationResult
+    from meik_image.tools import OutputSpec, _deliver
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (1344, 768), (255, 92, 243)).save(buffer, format="WEBP")
+    result = GenerationResult(
+        images=(GeneratedImage(data=buffer.getvalue(), media_type="image/webp"),),
+        model="test",
+        aspect_ratio="16:9",
+        cost_usd=0.0,
+        duration_seconds=0.0,
+    )
+
+    monkeypatch.setenv("MEIK_MEDIA_MODE", "off")
+    content = _deliver(
+        result,
+        prompt="p",
+        slug="Titulo Cualquiera",
+        output=OutputSpec(size="blog-hero", filename="como-automatizar-sin-morir"),
+        meta={},
+    )
+
+    saved = json.loads(content[-1])["images"][0]["saved_to"]
+    assert saved.endswith("como-automatizar-sin-morir.webp")

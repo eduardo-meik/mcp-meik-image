@@ -183,7 +183,41 @@ Plan Personal de Horizon: gratis, 200 servidores MCP, escala a cero cuando está
 | `MEIK_MEDIA_BASE_URL` | — | URL pública equivalente a esa carpeta |
 | `MEIK_MEDIA_KEY_PATH` / `_KEY_PASSPHRASE` | — | Auth SFTP por clave privada (alternativa a la contraseña) |
 | `MEIK_MEDIA_CPANEL_TOKEN` / `_CPANEL_URL` | — | Modo `cpanel`: subida vía API UAPI (Fileman) |
-| `MEIK_MEDIA_SUBDIR_BY_DATE` | `true` | Organizar en subcarpetas `YYYY-MM-DD` |
+| `MEIK_MEDIA_SUBDIR_BY_DATE` | `true` | Subcarpetas `YYYY-MM-DD`. Para `/img/blog/` va en `false` |
+| `MEIK_MEDIA_NAMING` | `unique` | `slug` → nombre estable `<slug>.ext`; `unique` → con hora y sufijo |
+
+## Convención de rutas del blog
+
+El blog publica en **`https://static.meiklabs.com/img/blog/<slug>.webp`** — plano, sin carpetas
+por fecha y con el slug del post como nombre. Es lo que usa el skill `blog-creator` y lo que hay
+hoy en el directorio (7 imágenes, todas `<slug>.webp`).
+
+Configuración correspondiente:
+
+```ini
+MEIK_MEDIA_MODE=cpanel
+MEIK_MEDIA_CPANEL_TOKEN=***
+MEIK_MEDIA_USER=meiklabs
+MEIK_MEDIA_REMOTE_DIR=/home2/meiklabs/public_html/website_71e15d19/img/blog/
+MEIK_MEDIA_BASE_URL=https://static.meiklabs.com/img/blog
+MEIK_MEDIA_SUBDIR_BY_DATE=false
+MEIK_MEDIA_NAMING=slug
+```
+
+Para forzar el nombre exacto de un post, pasa `output.filename`:
+
+```json
+{"output": {"size": "blog-hero", "format": "webp", "filename": "como-automatizar-sin-morir"}}
+```
+
+→ `https://static.meiklabs.com/img/blog/como-automatizar-sin-morir.webp`
+
+Repetir la llamada con el mismo `filename` **sobrescribe** el archivo: la URL queda estable y el
+`Image URL` del post en Notion no cambia.
+
+En modo `cpanel` no hace falta `MEIK_MEDIA_HOST`: se deriva del hostname de `MEIK_MEDIA_BASE_URL`
+(cPanel escucha en `:2083` del mismo servidor). Sí necesitas `MEIK_MEDIA_USER` (el usuario cPanel,
+porque la cabecera de la API es `cpanel usuario:token`).
 
 ## Estilo editorial del blog
 
@@ -336,7 +370,8 @@ MEIK_MEDIA_CPANEL_VERIFY_TLS=false                       # muchos cPanel usan ce
 También se aceptan los nombres cortos `SFTP_HOST`, `SFTP_PORT`, `SFTP_USER`, `SFTP_PASS`,
 `REMOTE_DIR` y `BASE_URL` (útiles si ya venían de Bluehost).
 
-Resultado: `https://meiklabs.com/assets/blog/2026-11-15/blog-hero-titulo-103012-a1b2c3.webp`
+Resultado (con `MEIK_MEDIA_SUBDIR_BY_DATE=false` y `MEIK_MEDIA_NAMING=slug`):
+`https://static.meiklabs.com/img/blog/<slug>.webp`
 
 ### La URL debe estar servida por el mismo hosting
 
@@ -345,7 +380,8 @@ Subir el archivo no basta: la URL pública solo funciona si el **docroot del hos
 - `meiklabs.com` resuelve a **Firebase Hosting** (199.36.158.100), así que
   `https://meiklabs.com/assets/blog/...` devuelve el HTML del SPA, no la imagen.
 - `static.meiklabs.com` resuelve a Bluehost (50.87.253.110) con docroot
-  `public_html/website_71e15d19`, y **sí** sirve los archivos.
+  `public_html/website_71e15d19`, y **sí** sirve los archivos. El blog vive en
+  `website_71e15d19/img/blog/`.
 
 Configuración verificada (HTTP 200 + `content-type` de imagen + bytes idénticos):
 

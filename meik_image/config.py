@@ -70,19 +70,55 @@ class MediaConfig:
     cpanel_token: str | None = None
     cpanel_url: str | None = None
     cpanel_verify_tls: bool = False
+    naming: str = "unique"
+
+    @property
+    def cpanel_host(self) -> str | None:
+        """cPanel runs on the hosting server; fall back to the public base_url host."""
+        if self.host:
+            return self.host
+        if self.base_url:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(self.base_url)
+            if parsed.hostname:
+                return parsed.hostname
+        return None
+
+    @property
+    def missing(self) -> list[str]:
+        """Environment variables still required before publishing can work."""
+        if self.mode == "off":
+            return []
+        common = []
+        if not self.remote_dir:
+            common.append("MEIK_MEDIA_REMOTE_DIR")
+        if not self.base_url:
+            common.append("MEIK_MEDIA_BASE_URL")
+        if self.mode == "cpanel":
+            needed = []
+            if not self.cpanel_token:
+                needed.append("MEIK_MEDIA_CPANEL_TOKEN")
+            if not self.user:
+                needed.append("MEIK_MEDIA_USER")
+            if not self.cpanel_host:
+                needed.append("MEIK_MEDIA_HOST (o un MEIK_MEDIA_BASE_URL con hostname)")
+            return needed + common
+        needed = []
+        if not self.host:
+            needed.append("MEIK_MEDIA_HOST")
+        if not self.user:
+            needed.append("MEIK_MEDIA_USER")
+        if not (self.password or self.key_path):
+            needed.append("MEIK_MEDIA_PASSWORD (o MEIK_MEDIA_KEY_PATH)")
+        return needed + common
 
     @property
     def configured(self) -> bool:
-        if self.mode == "cpanel":
-            return bool(self.host and self.user and self.cpanel_token and self.remote_dir and self.base_url)
-        return bool(
-            self.mode in {"sftp", "ftp", "ftps"}
-            and self.host
-            and self.user
-            and (self.password or self.key_path)
-            and self.remote_dir
-            and self.base_url
-        )
+        if self.mode == "off":
+            return False
+        return not self.missing
+
 
 
 @dataclass(frozen=True)
@@ -137,6 +173,7 @@ def _media_config() -> MediaConfig:
         ),
         cpanel_url=_env_str("MEIK_MEDIA_CPANEL_URL") or _env_str("CPANEL_URL"),
         cpanel_verify_tls=_env_bool("MEIK_MEDIA_CPANEL_VERIFY_TLS", False),
+        naming=(_env_str("MEIK_MEDIA_NAMING", "unique") or "unique").lower(),
     )
 
 

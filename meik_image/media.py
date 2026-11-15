@@ -68,10 +68,11 @@ class MediaPublisher:
     # ------------------------------------------------------------------ public
     def publish(self, data: bytes, filename: str, *, when: datetime | None = None) -> PublishedFile:
         if not self.configured:
+            missing = self._cfg.missing or ["(revisa MEIK_MEDIA_*)"]
             raise MediaError(
-                "El media server no está configurado. Define MEIK_MEDIA_HOST, MEIK_MEDIA_USER, "
-                "MEIK_MEDIA_PASSWORD, MEIK_MEDIA_REMOTE_DIR y MEIK_MEDIA_BASE_URL "
-                "(o las variables SFTP_HOST / SFTP_USER / SFTP_PASS / REMOTE_DIR / BASE_URL)."
+                "El media server no está configurado para publicar. Variables que faltan: "
+                + ", ".join(missing)
+                + f" (modo actual: {self._cfg.mode})."
             )
         remote_path, relative = build_remote_path(self._cfg, filename, when=when)
         folder = posixpath.dirname(remote_path)
@@ -208,7 +209,7 @@ class MediaPublisher:
 
     # ----------------------------------------------------------------- cpanel
     def _cpanel_base(self) -> str:
-        base = self._cfg.cpanel_url or f"https://{self._cfg.host}:2083"
+        base = self._cfg.cpanel_url or f"https://{self._cfg.cpanel_host}:2083"
         return base.rstrip("/")
 
     def _cpanel_headers(self) -> dict[str, str]:

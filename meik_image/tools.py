@@ -99,6 +99,14 @@ class OutputSpec(BaseModel):
             "Si el servidor no está configurado se ignora sin fallar."
         ),
     )
+    filename: str | None = Field(
+        None,
+        description=(
+            "Nombre exacto del archivo, sin extensión (p. ej. el slug del post). Úsalo cuando la "
+            "URL deba ser predecible: /img/blog/<slug>.webp. Si falta, se usa el slug del título "
+            "más un sufijo único."
+        ),
+    )
 
 
 def _store() -> AssetStore:
@@ -175,7 +183,13 @@ def _deliver(
             fit=spec.fit,
             max_kb=spec.max_kb,
         )
-        filename = f"{slugify(slug)}-{stamp}-{uuid4().hex[:6]}.{extension_of(processed)}"
+        filename_stem = (spec.filename or "").strip()
+        if filename_stem:
+            filename = f"{slugify(filename_stem, max_words=12)}.{extension_of(processed)}"
+        elif settings.media.naming == "slug":
+            filename = f"{slugify(slug)}.{extension_of(processed)}"
+        else:
+            filename = f"{slugify(slug)}-{stamp}-{uuid4().hex[:6]}.{extension_of(processed)}"
         entry: dict[str, Any] = {
             "index": index,
             "format": processed.fmt,
@@ -988,7 +1002,11 @@ def register_tools(mcp: FastMCP) -> None:
             raise ToolError(str(exc)) from exc
 
         publisher = publisher_from_settings()
-        filename = f"{sidecar.get('asset_id', asset_id)}-{processed.width}x{processed.height}.{extension_of(processed)}"
+        filename = (
+            f"{slugify(spec.filename, max_words=12)}.{extension_of(processed)}"
+            if spec.filename
+            else f"{sidecar.get('asset_id', asset_id)}-{processed.width}x{processed.height}.{extension_of(processed)}"
+        )
         published = publisher.publish(processed.data, filename)
 
         payload = fit_inline(processed.data, processed.media_type, settings.inline_max_chars)
@@ -1028,19 +1046,29 @@ def register_tools(mcp: FastMCP) -> None:
             "ok": status.ok,
             "mode": status.mode,
             "detail": status.detail,
-            "host": status.host,
+            "host": status.host or settings.media.cpanel_host,
             "remote_dir": status.remote_dir,
             "base_url": status.base_url,
             "transport": status.transport,
             "subdir_by_date": settings.media.subdir_by_date,
+            "naming": settings.media.naming,
+            "public_url_pattern": (
+                f"{settings.media.base_url.rstrip('/')}/"
+                + ("<YYYY-MM-DD>/" if settings.media.subdir_by_date else "")
+                + "<nombre>.<ext>"
+                if settings.media.base_url
+                else None
+            ),
             "output_default_format": settings.output_format,
         }
         if status.extra:
             payload["extra"] = status.extra
         if not status.configured:
+            payload["missing"] = settings.media.missing
             payload["how_to_configure"] = (
-                "En .env define MEIK_MEDIA_HOST, MEIK_MEDIA_USER, MEIK_MEDIA_PASSWORD, "
-                "MEIK_MEDIA_REMOTE_DIR y MEIK_MEDIA_BASE_URL. Modo: MEIK_MEDIA_MODE=sftp|ftp|ftps."
+                "Faltan variables de entorno: "
+                + ", ".join(settings.media.missing)
+                + ". En local van en .env; en Horizon/remoto, en los secretos del servidor."
             )
         return json.dumps(payload, ensure_ascii=False, indent=2)
 

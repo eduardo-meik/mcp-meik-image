@@ -133,6 +133,7 @@ Plan Personal de Horizon: gratis, 200 servidores MCP, escala a cero cuando está
 | `MEIK_MEDIA_HOST` / `_PORT` / `_USER` / `_PASSWORD` | — | Credenciales del hosting |
 | `MEIK_MEDIA_REMOTE_DIR` | — | Carpeta remota de destino |
 | `MEIK_MEDIA_BASE_URL` | — | URL pública equivalente a esa carpeta |
+| `MEIK_MEDIA_KEY_PATH` / `_KEY_PASSPHRASE` | — | Auth SFTP por clave privada (alternativa a la contraseña) |
 | `MEIK_MEDIA_SUBDIR_BY_DATE` | `true` | Organizar en subcarpetas `YYYY-MM-DD` |
 
 ## Tamaño, formato y peso
@@ -191,7 +192,11 @@ También se aceptan los nombres cortos `SFTP_HOST`, `SFTP_PORT`, `SFTP_USER`, `S
 Resultado: `https://meiklabs.com/assets/blog/2026-11-15/blog-hero-titulo-103012-a1b2c3.webp`
 
 - **SFTP** necesita que el acceso SSH esté habilitado en cPanel (SSH Access → Manage SSH Keys/Enable).
-- Si SSH está deshabilitado, usa `MEIK_MEDIA_MODE=ftp` (o `ftps` para TLS explícito).
+- **Auth por clave SSH**: en vez de `MEIK_MEDIA_PASSWORD` puedes usar `MEIK_MEDIA_KEY_PATH` apuntando
+  a la clave privada (y `MEIK_MEDIA_KEY_PASSPHRASE` si tiene passphrase). Es lo recomendado si
+  generaste un par de claves en cPanel.
+- Si SSH está deshabilitado, usa `MEIK_MEDIA_MODE=ftp` (o `ftps` para TLS explícito); esos modos
+  requieren contraseña, no aceptan clave.
 - Usa `media_server_status` para probar la conexión sin generar nada; devuelve la causa exacta
   (credenciales rechazadas, handshake cortado, host inalcanzable, carpeta inexistente).
 - Si una subida falla, la generación **no** falla: la imagen se entrega igual y `publish_error`

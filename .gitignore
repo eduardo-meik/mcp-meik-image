@@ -22,5 +22,7 @@ model-limits-openrouter.md
 
 # Claves y scripts locales de diagnóstico
 *.pub
+meik_media_key
+meik_media_key.*
 _sftp_probe.py
 linkedin_img_size.md

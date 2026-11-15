@@ -209,6 +209,31 @@ También se aceptan los nombres cortos `SFTP_HOST`, `SFTP_PORT`, `SFTP_USER`, `S
 
 Resultado: `https://meiklabs.com/assets/blog/2026-11-15/blog-hero-titulo-103012-a1b2c3.webp`
 
+### La URL debe estar servida por el mismo hosting
+
+Subir el archivo no basta: la URL pública solo funciona si el **docroot del hostname** es la carpeta donde se sube. Caso real de Meik Labs:
+
+- `meiklabs.com` resuelve a **Firebase Hosting** (199.36.158.100), así que
+  `https://meiklabs.com/assets/blog/...` devuelve el HTML del SPA, no la imagen.
+- `static.meiklabs.com` resuelve a Bluehost (50.87.253.110) con docroot
+  `public_html/website_71e15d19`, y **sí** sirve los archivos.
+
+Configuración verificada (HTTP 200 + `content-type` de imagen + bytes idénticos):
+
+```ini
+MEIK_MEDIA_MODE=cpanel
+CPANEL_API_TOKEN=***
+MEIK_MEDIA_REMOTE_DIR=/home2/meiklabs/public_html/website_71e15d19/assets/blog/
+MEIK_MEDIA_BASE_URL=https://static.meiklabs.com/assets/blog
+```
+
+Si más adelante creas `media.meiklabs.com` (cPanel → Domains → Create A New Domain con
+document root `/home2/meiklabs/public_html/assets`), basta cambiar esas dos variables: el
+DNS de `meiklabs.com` lo administra Bluehost, así que el registro A se crea solo.
+
+> El token de cPanel necesita al menos `Fileman::upload_files` y `Fileman::list_files`.
+> Borrar archivos requiere permisos extra (`delete_files`), que un token mínimo no trae.
+
 - **SFTP** necesita que el acceso SSH esté habilitado en cPanel (SSH Access → Manage SSH Keys/Enable).
 - **Auth por clave SSH**: en vez de `MEIK_MEDIA_PASSWORD` puedes usar `MEIK_MEDIA_KEY_PATH` apuntando
   a la clave privada (y `MEIK_MEDIA_KEY_PASSPHRASE` si tiene passphrase). Es lo recomendado si

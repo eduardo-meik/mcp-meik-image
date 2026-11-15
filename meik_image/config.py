@@ -124,7 +124,11 @@ def _media_config() -> MediaConfig:
         remote_dir=_env_str("MEIK_MEDIA_REMOTE_DIR") or _env_str("REMOTE_DIR"),
         base_url=_env_str("MEIK_MEDIA_BASE_URL") or _env_str("BASE_URL"),
         subdir_by_date=_env_bool("MEIK_MEDIA_SUBDIR_BY_DATE", True),
-        key_path=_env_str("MEIK_MEDIA_KEY_PATH") or _env_str("SFTP_KEY_PATH"),
+        key_path=(
+            _env_str("MEIK_MEDIA_KEY_PATH")
+            or _env_str("SFTP_KEY_PATH")
+            or _env_str("SFTP_PRIVATE_KEY_PATH")
+        ),
         key_passphrase=_env_str("MEIK_MEDIA_KEY_PASSPHRASE"),
         cpanel_token=(
             _env_str("MEIK_MEDIA_CPANEL_TOKEN")

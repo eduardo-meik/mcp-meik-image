@@ -136,6 +136,24 @@ def test_settings_read_legacy_sftp_variable_names(monkeypatch: pytest.MonkeyPatc
     assert media.configured is True
 
 
+def test_sftp_private_key_path_alias_is_recognised(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MEIK_MEDIA_HOST", "sftp.legacy.com")
+    monkeypatch.setenv("MEIK_MEDIA_USER", "meiklabs")
+    monkeypatch.setenv("MEIK_MEDIA_REMOTE_DIR", "/home/meiklabs/public_html/assets")
+    monkeypatch.setenv("MEIK_MEDIA_BASE_URL", "https://legacy.com/assets")
+    monkeypatch.setenv("SFTP_PRIVATE_KEY_PATH", r"C:\keys\mcp_blog_key")
+    monkeypatch.delenv("MEIK_MEDIA_KEY_PATH", raising=False)
+    monkeypatch.delenv("SFTP_KEY_PATH", raising=False)
+    monkeypatch.delenv("MEIK_MEDIA_PASSWORD", raising=False)
+    monkeypatch.delenv("SFTP_PASS", raising=False)
+    monkeypatch.delenv("SSH_PASSWORD", raising=False)
+
+    media = load_settings().media
+
+    assert media.key_path == r"C:\keys\mcp_blog_key"
+    assert media.configured is True
+
+
 def test_media_mode_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SFTP_HOST", "sftp.legacy.com")
     monkeypatch.setenv("MEIK_MEDIA_MODE", "off")

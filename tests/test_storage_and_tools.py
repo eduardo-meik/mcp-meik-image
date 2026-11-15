@@ -48,6 +48,16 @@ def test_load_roundtrip_and_traversal_is_blocked(tmp_path, webp_bytes: bytes) ->
     assert store.load("does-not-exist") is None
 
 
+def test_sibling_directory_with_shared_prefix_is_not_reachable(tmp_path, png_bytes: bytes) -> None:
+    assets = tmp_path / "assets"
+    sibling = tmp_path / "assets-evil"
+    sibling.mkdir()
+    (sibling / "secret.png").write_bytes(png_bytes)
+    store = AssetStore(assets)
+
+    assert store.load("../assets-evil/secret.png") is None
+
+
 def test_list_assets_filters_by_query(tmp_path, png_bytes: bytes) -> None:
     store = AssetStore(tmp_path / "assets")
     store.save(png_bytes, "image/png", slug="blog hero pagos", metadata={"prompt": "pagos automáticos"})

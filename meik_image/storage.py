@@ -145,16 +145,23 @@ class AssetStore:
         if self._root is None:
             return None
         root = self._root.resolve()
-        candidate = (root / asset_id).resolve()
-        if not str(candidate).startswith(str(root)):
+
+        def inside(path: Path) -> bool:
+            try:
+                path.resolve().relative_to(root)
+            except ValueError:
+                return False
+            return True
+
+        candidate = root / asset_id
+        if not inside(candidate):
             return None
+        candidate = candidate.resolve()
         if not candidate.exists():
             matches = [p for p in self._iter_files() if p.stem == asset_id or p.name == asset_id]
-            if not matches:
+            if not matches or not inside(matches[0]):
                 return None
             candidate = matches[0].resolve()
-            if not str(candidate).startswith(str(root)):
-                return None
         if not candidate.is_file():
             return None
         data = candidate.read_bytes()

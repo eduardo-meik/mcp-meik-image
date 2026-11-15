@@ -237,3 +237,19 @@ def test_cpanel_rejected_token_is_actionable(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_cpanel_mode_without_token_is_not_configured() -> None:
     assert MediaPublisher(_cfg(mode="cpanel", password=None, cpanel_token=None)).configured is False
+
+
+def test_cpanel_token_alias_is_recognised(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MEIK_MEDIA_MODE", "cpanel")
+    monkeypatch.setenv("MEIK_MEDIA_HOST", "sftp.legacy.com")
+    monkeypatch.setenv("MEIK_MEDIA_USER", "meiklabs")
+    monkeypatch.setenv("MEIK_MEDIA_REMOTE_DIR", "/home/meiklabs/public_html/assets")
+    monkeypatch.setenv("MEIK_MEDIA_BASE_URL", "https://meiklabs.com/assets")
+    monkeypatch.setenv("CPANEL_API_TOKEN", "TOKEN-FROM-DOTENV")
+    monkeypatch.delenv("MEIK_MEDIA_CPANEL_TOKEN", raising=False)
+    monkeypatch.delenv("CPANEL_TOKEN", raising=False)
+
+    media = load_settings().media
+
+    assert media.cpanel_token == "TOKEN-FROM-DOTENV"
+    assert media.configured is True

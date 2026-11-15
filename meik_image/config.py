@@ -125,7 +125,11 @@ def _media_config() -> MediaConfig:
         subdir_by_date=_env_bool("MEIK_MEDIA_SUBDIR_BY_DATE", True),
         key_path=_env_str("MEIK_MEDIA_KEY_PATH") or _env_str("SFTP_KEY_PATH"),
         key_passphrase=_env_str("MEIK_MEDIA_KEY_PASSPHRASE"),
-        cpanel_token=_env_str("MEIK_MEDIA_CPANEL_TOKEN") or _env_str("CPANEL_TOKEN"),
+        cpanel_token=(
+            _env_str("MEIK_MEDIA_CPANEL_TOKEN")
+            or _env_str("CPANEL_API_TOKEN")
+            or _env_str("CPANEL_TOKEN")
+        ),
         cpanel_url=_env_str("MEIK_MEDIA_CPANEL_URL") or _env_str("CPANEL_URL"),
         cpanel_verify_tls=_env_bool("MEIK_MEDIA_CPANEL_VERIFY_TLS", False),
     )

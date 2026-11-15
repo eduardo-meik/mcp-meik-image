@@ -19,3 +19,8 @@ Thumbs.db
 
 # Nota local de límites de modelos
 model-limits-openrouter.md
+
+# Claves y scripts locales de diagnÃ³stico
+*.pub
+_sftp_probe.py
+linkedin_img_size.md

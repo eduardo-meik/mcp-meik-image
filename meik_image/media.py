@@ -80,6 +80,11 @@ class MediaPublisher:
         if mode == "sftp":
             self._put_sftp(folder, remote_path, data)
         elif mode in {"ftp", "ftps"}:
+            if self._cfg.key_path and not self._cfg.password:
+                raise MediaError(
+                    f"{mode.upper()} no admite autenticación por clave: define MEIK_MEDIA_PASSWORD "
+                    "o usa MEIK_MEDIA_MODE=sftp."
+                )
             self._put_ftp(folder, remote_path, data)
         else:
             raise MediaError(f"Modo de publicación no soportado: {mode!r}. Usa sftp, ftp o ftps.")
@@ -179,18 +184,41 @@ class MediaPublisher:
             )
 
     # ------------------------------------------------------------------ sftp
+    def _load_pkey(self):
+        import paramiko
+
+        path = self._cfg.key_path
+        if not path:
+            return None
+        try:
+            return paramiko.PKey.from_path(path, passphrase=self._cfg.key_passphrase)
+        except AttributeError:  # paramiko < 3.2
+            for key_class in (paramiko.Ed25519Key, paramiko.RSAKey, paramiko.ECDSAKey):
+                try:
+                    return key_class.from_private_key_file(path, password=self._cfg.key_passphrase)
+                except Exception:  # noqa: BLE001, PERF203 - try the next key type
+                    continue
+            raise MediaError(f"No se pudo leer la clave privada en {path}.")
+        except Exception as exc:  # noqa: BLE001
+            raise MediaError(f"No se pudo leer la clave privada en {path}: {exc}") from exc
+
     def _connect_sftp(self):
         import paramiko
 
         try:
             transport = paramiko.Transport((self._cfg.host, self._cfg.port or 22))
             transport.banner_timeout = 30
-            transport.connect(username=self._cfg.user, password=self._cfg.password)
+            pkey = self._load_pkey()
+            if pkey is not None:
+                transport.connect(username=self._cfg.user, pkey=pkey)
+            else:
+                transport.connect(username=self._cfg.user, password=self._cfg.password)
             return transport
         except paramiko.AuthenticationException as exc:
             raise MediaError(
                 "El servidor rechazó el usuario/clave SFTP. Verifica MEIK_MEDIA_USER y "
-                "MEIK_MEDIA_PASSWORD (en cPanel: 'SSH Access' debe estar habilitado; si no lo está, "
+                "MEIK_MEDIA_PASSWORD, o configura MEIK_MEDIA_KEY_PATH con tu clave privada "
+                "(en cPanel: 'SSH Access' debe estar habilitado; si no lo está, "
                 "usa MEIK_MEDIA_MODE=ftp o ftps)."
             ) from exc
         except paramiko.SSHException as exc:

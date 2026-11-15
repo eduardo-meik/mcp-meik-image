@@ -139,5 +139,48 @@ def test_settings_read_legacy_sftp_variable_names(monkeypatch: pytest.MonkeyPatc
 def test_media_mode_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SFTP_HOST", "sftp.legacy.com")
     monkeypatch.setenv("MEIK_MEDIA_MODE", "off")
-
     assert load_settings().media.configured is False
+
+
+def test_key_based_auth_is_used_when_a_private_key_is_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict = {}
+
+    class CapturingTransport:
+        def __init__(self, *args, **kwargs) -> None:
+            self.banner_timeout = 0
+
+        def connect(self, **kwargs):
+            captured.update(kwargs)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(paramiko, "Transport", CapturingTransport)
+    monkeypatch.setattr(paramiko.PKey, "from_path", staticmethod(lambda path, passphrase=None: "PKEY"))
+    publisher = MediaPublisher(_cfg(password=None, key_path="C:/keys/mcp_blog_key"))
+    publisher._connect_sftp()
+
+    assert captured["pkey"] == "PKEY"
+    assert "password" not in captured
+
+
+def test_key_only_configuration_counts_as_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MEIK_MEDIA_PASSWORD", raising=False)
+    monkeypatch.delenv("SFTP_PASS", raising=False)
+    monkeypatch.setenv("MEIK_MEDIA_HOST", "sftp.legacy.com")
+    monkeypatch.setenv("MEIK_MEDIA_USER", "user")
+    monkeypatch.setenv("MEIK_MEDIA_KEY_PATH", "C:/keys/id_ed25519")
+    monkeypatch.setenv("MEIK_MEDIA_REMOTE_DIR", "/home/user/public_html/assets")
+    monkeypatch.setenv("MEIK_MEDIA_BASE_URL", "https://legacy.com/assets")
+
+    media = load_settings().media
+
+    assert media.configured is True
+    assert media.key_path == "C:/keys/id_ed25519"
+
+
+def test_ftp_without_password_explains_the_limitation() -> None:
+    publisher = MediaPublisher(_cfg(mode="ftp", password=None, key_path="C:/keys/id_ed25519"))
+
+    with pytest.raises(MediaError, match="no admite autenticación por clave"):
+        publisher.publish(b"binary", "x.jpg")

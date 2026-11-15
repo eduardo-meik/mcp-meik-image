@@ -103,21 +103,41 @@ claude mcp add --transport http meik-images https://<nombre>.fastmcp.app/mcp
 
 ## Publicar en Prefect Horizon (ex FastMCP Gateway)
 
-Horizon despliega desde un repositorio de GitHub; no hay comando de deploy en la CLI
-(`fastmcp login` / `whoami` / `logout` son solo credenciales).
+Horizon despliega desde un repositorio de GitHub y **sirve el servidor con uvicorn**, así que
+el repo debe exponer una **app ASGI**, no solo la instancia de FastMCP.
 
-1. Sube este repo a GitHub (por ejemplo `eduardo-meik/mcp-meik-image`).
+Este repo ya trae las dos cosas y `fastmcp.json`:
+
+| Entrypoint | Objeto | Cuándo |
+| --- | --- | --- |
+| `main.py:mcp` | instancia FastMCP | `fastmcp run`, Claude Desktop local |
+| `main.py:app` | app ASGI (Starlette) | uvicorn / Horizon |
+| `src/server.py:app` · `src/server.py:mcp` | igual que arriba | layout por defecto de la plantilla de Horizon |
+| `src/main.py:app` · `src/main.py:mcp` | alias | si el entrypoint quedó como `src/main.py:...` |
+
+Pasos:
+
+1. Sube este repo a GitHub (ya está en `eduardo-meik/mcp-meik-image`).
 2. Entra en <https://horizon.prefect.io> y autentica con GitHub.
 3. **Connect GitHub** → elige el repo.
 4. Configura el servidor:
    - **Name**: `meik-images` (define la URL pública)
-   - **Entrypoint**: `main.py:mcp`
+   - **Entrypoint**: `main.py:mcp` — si el formulario insiste en un layout `src/`,
+     usa `src/server.py:mcp`
    - **Authentication**: activada (recomendado: solo tu organización)
-5. **Deploy Server**. El build clona el repo, instala `requirements.txt` y publica en <60 s.
-   Los pushes a `main` redespliegan solos y cada PR genera un preview.
-6. En la configuración del servidor, añade el secreto **`OPENROUTER_API_KEY`** y, si aplica,
-   `MEIK_IMAGE_MODEL=recraft/recraft-v4.1-flash-v2:free`. En remoto conviene
-   `MEIK_IMAGE_DIR=off` (el filesystem es efímero).
+5. **Deploy Server**. El build clona el repo, resuelve `requirements.txt` con uv y publica en <60 s.
+6. Añade los secretos (ver más abajo) y verifica con `https://<nombre>.fastmcp.app/health`.
+
+> **Error `ModuleNotFoundError: No module named 'src'`**: el entrypoint configurado apunta a un
+> layout `src/...` que el repo no tenía. Ya está cubierto con `src/server.py` y `src/main.py`;
+> si vuelve a aparecer, revisa que el campo Entrypoint diga `main.py:mcp`.
+
+> **`mcp` no es una app ASGI**: usa `main.py:app` (o `src/server.py:app`) cuando el host arranque
+> con uvicorn.
+
+El servidor expone además `GET /health` (estado, modelo, API key y media server configurados) y
+`GET /` con la información del endpoint. Se sirve en modo **stateless** porque las plataformas con
+scale-to-zero pierden la sesión entre peticiones y todas las herramientas son autocontenidas.
 
 Plan Personal de Horizon: gratis, 200 servidores MCP, escala a cero cuando está inactivo.
 
@@ -362,7 +382,10 @@ El JSON que acompaña a cada imagen indica `downscaled_for_client`, dimensiones,
 ## Estructura
 
 ```
-main.py                 FastMCP app + entrypoint (mcp)
+main.py                 FastMCP app + entrypoints (mcp, app) + CLI local
+fastmcp.json            Config de proyecto FastMCP (source/env/deployment)
+src/server.py           Entrypoint ASGI para Horizon/uvicorn (app, mcp)
+src/main.py             Alias de src.server para el layout src/main.py:mcp
 meik_image/config.py    Settings desde entorno/.env
 meik_image/brand.py     Paletas, estilos (incluye registro blog), formatos, arquetipos de slide
 meik_image/presets.py   Tamaños por destino (LinkedIn, blog, redes, decks) y salida nativa

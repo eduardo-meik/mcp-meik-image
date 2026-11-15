@@ -76,6 +76,49 @@ mcp = FastMCP(
 register_tools(mcp)
 
 
+def _attach_aux_routes(asgi_app) -> None:
+    """Health and index routes, so any host's health check has something to hit."""
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    async def health(_: Request) -> JSONResponse:
+        current = load_settings()
+        return JSONResponse(
+            {
+                "status": "ok" if current.has_api_key else "missing_api_key",
+                "version": __version__,
+                "model": current.model,
+                "api_key_configured": current.has_api_key,
+                "media_server_configured": current.media.configured,
+            }
+        )
+
+    async def index(_: Request) -> JSONResponse:
+        return JSONResponse(
+            {
+                "server": "Meik Labs · Imágenes",
+                "transport": "streamable-http",
+                "mcp_endpoint": "/mcp",
+                "health": "/health",
+            }
+        )
+
+    asgi_app.router.routes.extend(
+        [
+            Route("/health", health, methods=["GET"]),
+            Route("/", index, methods=["GET"]),
+        ]
+    )
+
+
+# ASGI app for hosts that serve the server with uvicorn (FastMCP Gateway/Horizon,
+# Render, Fly, Cloud Run). Stateless because these platforms scale to zero between
+# requests; every tool here is a self-contained call.
+app = mcp.http_app(path="/mcp", stateless_http=True)
+_attach_aux_routes(app)
+
+
 def _health() -> dict:
     import asyncio
 

@@ -130,3 +130,52 @@ def test_health_reports_tools_and_key_state(isolated_env) -> None:
     assert health["api_key_configured"] is True
     assert health["model"] == "recraft/recraft-v4.1-flash-v2:free"
     assert "generate_blog_hero" in health["tools"]
+
+
+def test_asgi_app_is_exposed_for_uvicorn_hosts(isolated_env) -> None:
+    """FastMCP Gateway/Horizon serves the repo with uvicorn, so an ASGI app must exist."""
+    import main
+
+    assert main.app is not None
+    paths = [getattr(route, "path", None) for route in main.app.routes]
+    assert "/mcp" in paths
+    assert "/health" in paths
+
+
+def test_served_package_reuses_the_same_app(isolated_env) -> None:
+    """src/server.py and src/main.py exist because the platform's default entrypoint is src.*."""
+    import main
+    from src.main import app as from_src_main
+    from src.server import app as from_src_server
+
+    assert from_src_server is main.app
+    assert from_src_main is main.app
+
+
+def test_health_route_reports_configuration(isolated_env, monkeypatch) -> None:
+    from starlette.testclient import TestClient
+
+    import main
+
+    monkeypatch.setenv("MEIK_MEDIA_MODE", "off")
+
+    with TestClient(main.app) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["api_key_configured"] is True
+    assert body["media_server_configured"] is False
+
+
+def test_fastmcp_json_points_at_a_loadable_entrypoint(isolated_env) -> None:
+    import json
+    from pathlib import Path
+
+    config = json.loads(Path("fastmcp.json").read_text(encoding="utf-8"))
+
+    assert config["source"]["path"] == "main.py"
+    assert config["source"]["entrypoint"] == "mcp"
+    assert config["environment"]["requirements"] == "requirements.txt"
+    assert config["deployment"]["transport"] == "http"

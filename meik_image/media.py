@@ -79,6 +79,8 @@ class MediaPublisher:
         mode = self._cfg.mode
         if mode == "sftp":
             self._put_sftp(folder, remote_path, data)
+        elif mode == "cpanel":
+            self._put_cpanel(folder, remote_path, data)
         elif mode in {"ftp", "ftps"}:
             if self._cfg.key_path and not self._cfg.password:
                 raise MediaError(
@@ -87,7 +89,7 @@ class MediaPublisher:
                 )
             self._put_ftp(folder, remote_path, data)
         else:
-            raise MediaError(f"Modo de publicación no soportado: {mode!r}. Usa sftp, ftp o ftps.")
+            raise MediaError(f"Modo de publicación no soportado: {mode!r}. Usa sftp, cpanel, ftp o ftps.")
 
         return PublishedFile(
             url=_join_url(self._cfg.base_url or "", relative),
@@ -111,6 +113,8 @@ class MediaPublisher:
                 base_url=self._cfg.base_url,
             )
         try:
+            if self._cfg.mode == "cpanel":
+                return self._cpanel_status()
             if self._cfg.mode == "sftp":
                 transport = self._connect_sftp()
                 sftp = transport.open_sftp_client()
@@ -202,6 +206,106 @@ class MediaPublisher:
         except Exception as exc:  # noqa: BLE001
             raise MediaError(f"No se pudo leer la clave privada en {path}: {exc}") from exc
 
+    # ----------------------------------------------------------------- cpanel
+    def _cpanel_base(self) -> str:
+        base = self._cfg.cpanel_url or f"https://{self._cfg.host}:2083"
+        return base.rstrip("/")
+
+    def _cpanel_headers(self) -> dict[str, str]:
+        return {"Authorization": f"cpanel {self._cfg.user}:{self._cfg.cpanel_token}"}
+
+    def _put_cpanel(self, folder: str, remote_path: str, data: bytes) -> None:
+        import httpx
+
+        if not self._cfg.cpanel_token:
+            raise MediaError(
+                "Falta MEIK_MEDIA_CPANEL_TOKEN (cPanel → Security → Manage API Tokens)."
+            )
+        url = f"{self._cpanel_base()}/execute/Fileman/upload_files"
+        try:
+            response = httpx.post(
+                url,
+                headers=self._cpanel_headers(),
+                data={"dir": folder},
+                files={"file-1": (posixpath.basename(remote_path), data, "application/octet-stream")},
+                timeout=60,
+                verify=self._cfg.cpanel_verify_tls,
+            )
+        except httpx.HTTPError as exc:
+            raise MediaError(f"No se pudo llamar a la API de cPanel en {url}: {exc}") from exc
+
+        if response.status_code in {401, 403}:
+            raise MediaError(
+                "cPanel rechazó el token (401/403). Revisa MEIK_MEDIA_CPANEL_TOKEN y que el token "
+                "tenga permisos de Fileman."
+            )
+        if response.status_code >= 400:
+            raise MediaError(f"cPanel respondió {response.status_code}: {response.text[:200]}")
+        try:
+            body = response.json()
+        except ValueError:
+            return
+        if isinstance(body, dict) and body.get("status") == 0:
+            errors = body.get("errors") or body.get("messages") or body.get("data")
+            raise MediaError(f"cPanel rechazó la subida: {errors}")
+
+    def _cpanel_status(self) -> MediaStatus:
+        import httpx
+
+        url = f"{self._cpanel_base()}/execute/Fileman/list_files"
+        try:
+            response = httpx.get(
+                url,
+                headers=self._cpanel_headers(),
+                params={"dir": self._cfg.remote_dir, "types": "file|dir"},
+                timeout=30,
+                verify=self._cfg.cpanel_verify_tls,
+            )
+        except httpx.HTTPError as exc:
+            return MediaStatus(
+                configured=True,
+                mode="cpanel",
+                ok=False,
+                detail=f"No se pudo contactar la API de cPanel en {url}: {exc}",
+                host=self._cfg.host,
+                remote_dir=self._cfg.remote_dir,
+                base_url=self._cfg.base_url,
+            )
+        if response.status_code in {401, 403}:
+            return MediaStatus(
+                configured=True,
+                mode="cpanel",
+                ok=False,
+                detail="Token de cPanel rechazado (401/403). Revisa MEIK_MEDIA_CPANEL_TOKEN.",
+                host=self._cfg.host,
+                remote_dir=self._cfg.remote_dir,
+                base_url=self._cfg.base_url,
+            )
+        ok = response.status_code == 200
+        entries: list[str] = []
+        try:
+            body = response.json()
+            for item in (body.get("data") or [])[:5]:
+                if isinstance(item, dict):
+                    entries.append(item.get("file") or item.get("path") or "?")
+        except ValueError:
+            pass
+        return MediaStatus(
+            configured=True,
+            mode="cpanel",
+            ok=ok,
+            detail=(
+                f"API de cPanel respondió {response.status_code} para {self._cfg.remote_dir}."
+                if ok
+                else f"API de cPanel respondió {response.status_code}."
+            ),
+            host=self._cfg.host,
+            remote_dir=self._cfg.remote_dir,
+            base_url=self._cfg.base_url,
+            transport="cpanel",
+            extra={"sample_entries": entries},
+        )
+
     def _connect_sftp(self):
         import paramiko
 
@@ -223,10 +327,10 @@ class MediaPublisher:
             ) from exc
         except paramiko.SSHException as exc:
             raise MediaError(
-                f"El servidor cortó el handshake SSH ({str(exc)[:80]}). Suele significar que el acceso "
-                "SSH está deshabilitado para la cuenta, que el host/puerto no corresponde, o que hay "
-                "bloqueo por intentos previos. Habilita 'SSH Access' en cPanel o usa "
-                "MEIK_MEDIA_MODE=ftp/ftps."
+                f"El servidor cortó el handshake SSH ({str(exc)[:80]}). Causas típicas: acceso SSH "
+                "deshabilitado para la cuenta, host/puerto incorrecto, o bloqueo anti-fuerza-bruta "
+                "(cPanel → cPHulk Brute Force Protection: borra el registro de tu IP). "
+                "También puedes usar MEIK_MEDIA_MODE=ftp/ftps."
             ) from exc
         except (socket.timeout, OSError) as exc:
             raise MediaError(

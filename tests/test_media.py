@@ -111,7 +111,7 @@ def test_banner_drop_is_reported_with_a_hint(monkeypatch: pytest.MonkeyPatch) ->
 
     assert status.ok is False
     assert "handshake SSH" in status.detail
-    assert "SSH Access" in status.detail
+    assert "cPHulk" in status.detail
 
 
 def test_settings_read_legacy_sftp_variable_names(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,3 +184,56 @@ def test_ftp_without_password_explains_the_limitation() -> None:
 
     with pytest.raises(MediaError, match="no admite autenticación por clave"):
         publisher.publish(b"binary", "x.jpg")
+
+
+def test_cpanel_upload_posts_multipart_and_builds_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    captured: dict = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"status": 1, "data": {"uploaded": True}}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return FakeResponse()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    publisher = MediaPublisher(
+        _cfg(mode="cpanel", password=None, cpanel_token="TOKEN123", cpanel_url="https://cpanel.meiklabs.com:2083")
+    )
+
+    published = publisher.publish(b"binary", "hero.webp", when=datetime(2026, 11, 15, 8, 0))
+
+    assert captured["url"] == "https://cpanel.meiklabs.com:2083/execute/Fileman/upload_files"
+    assert captured["headers"]["Authorization"] == "cpanel meiklabs:TOKEN123"
+    assert captured["data"] == {"dir": "/home2/meiklabs/public_html/assets/blog/2026-11-15"}
+    assert captured["files"]["file-1"][0] == "hero.webp"
+    assert published.url == "https://meiklabs.com/assets/blog/2026-11-15/hero.webp"
+    assert published.transport == "cpanel"
+
+
+def test_cpanel_rejected_token_is_actionable(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    class Rejected:
+        status_code = 403
+        text = "Forbidden"
+
+        def json(self):
+            return {}
+
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: Rejected())
+    publisher = MediaPublisher(_cfg(mode="cpanel", password=None, cpanel_token="BAD"))
+
+    with pytest.raises(MediaError, match="token"):
+        publisher.publish(b"binary", "hero.webp")
+
+
+def test_cpanel_mode_without_token_is_not_configured() -> None:
+    assert MediaPublisher(_cfg(mode="cpanel", password=None, cpanel_token=None)).configured is False

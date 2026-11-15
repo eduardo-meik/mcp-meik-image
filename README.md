@@ -134,6 +134,7 @@ Plan Personal de Horizon: gratis, 200 servidores MCP, escala a cero cuando está
 | `MEIK_MEDIA_REMOTE_DIR` | — | Carpeta remota de destino |
 | `MEIK_MEDIA_BASE_URL` | — | URL pública equivalente a esa carpeta |
 | `MEIK_MEDIA_KEY_PATH` / `_KEY_PASSPHRASE` | — | Auth SFTP por clave privada (alternativa a la contraseña) |
+| `MEIK_MEDIA_CPANEL_TOKEN` / `_CPANEL_URL` | — | Modo `cpanel`: subida vía API UAPI (Fileman) |
 | `MEIK_MEDIA_SUBDIR_BY_DATE` | `true` | Organizar en subcarpetas `YYYY-MM-DD` |
 
 ## Tamaño, formato y peso
@@ -176,14 +177,31 @@ devuelve `public_url`, `remote_path` y el transporte usado. Los archivos van a
 `REMOTE_DIR[/YYYY-MM-DD]/slug-hora-id.ext`.
 
 ```ini
-MEIK_MEDIA_MODE=sftp            # sftp | ftp | ftps | off
+MEIK_MEDIA_MODE=sftp            # sftp | cpanel | ftp | ftps | off
 MEIK_MEDIA_HOST=sftp.meiklabs.com
 MEIK_MEDIA_PORT=22
 MEIK_MEDIA_USER=usuario_cpanel
-MEIK_MEDIA_PASSWORD=clave
+MEIK_MEDIA_PASSWORD=clave       # o usa MEIK_MEDIA_KEY_PATH
 MEIK_MEDIA_REMOTE_DIR=/home2/usuario/public_html/assets/blog/
 MEIK_MEDIA_BASE_URL=https://meiklabs.com/assets/blog
 MEIK_MEDIA_SUBDIR_BY_DATE=true
+```
+
+Tres transportes, según lo que permita el hosting:
+
+| Modo | Requiere | Cuándo usarlo |
+| --- | --- | --- |
+| `sftp` | SSH habilitado + clave autorizada (o contraseña) | el más rápido y estable |
+| `cpanel` | `MEIK_MEDIA_CPANEL_TOKEN` (cPanel → Security → Manage API Tokens) | si SSH/FTP están bloqueados o deshabilitados |
+| `ftp` / `ftps` | contraseña | último recurso; `ftps` añade TLS explícito |
+
+Para el modo API de cPanel:
+
+```ini
+MEIK_MEDIA_MODE=cpanel
+MEIK_MEDIA_CPANEL_TOKEN=tu-token
+MEIK_MEDIA_CPANEL_URL=https://cpanel.meiklabs.com:2083   # opcional
+MEIK_MEDIA_CPANEL_VERIFY_TLS=false                       # muchos cPanel usan certificado propio
 ```
 
 También se aceptan los nombres cortos `SFTP_HOST`, `SFTP_PORT`, `SFTP_USER`, `SFTP_PASS`,
@@ -262,6 +280,7 @@ tests/                  pytest (sin red)
 | `No encontré el asset …` | El almacenamiento local está en `off` o el asset vive en otro despliegue |
 | `El servidor rechazó el usuario/clave SFTP` | Clave incorrecta o SSH deshabilitado en cPanel → `MEIK_MEDIA_MODE=ftp` |
 | `El servidor cortó el handshake SSH` | SSH bloqueado/deshabilitado, puerto equivocado o bloqueo por intentos |
+| Bloqueo tras varios intentos fallidos | cPanel → **cPHulk Brute Force Protection** → borra el registro de tu IP, o usa `MEIK_MEDIA_MODE=cpanel` |
 | `publish_error` pero la imagen llega | La generación no falla por la subida; reintenta con `publish_asset` |
 
 ## Marca

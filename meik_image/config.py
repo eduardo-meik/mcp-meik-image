@@ -67,9 +67,14 @@ class MediaConfig:
     subdir_by_date: bool
     key_path: str | None = None
     key_passphrase: str | None = None
+    cpanel_token: str | None = None
+    cpanel_url: str | None = None
+    cpanel_verify_tls: bool = False
 
     @property
     def configured(self) -> bool:
+        if self.mode == "cpanel":
+            return bool(self.host and self.user and self.cpanel_token and self.remote_dir and self.base_url)
         return bool(
             self.mode in {"sftp", "ftp", "ftps"}
             and self.host
@@ -120,6 +125,9 @@ def _media_config() -> MediaConfig:
         subdir_by_date=_env_bool("MEIK_MEDIA_SUBDIR_BY_DATE", True),
         key_path=_env_str("MEIK_MEDIA_KEY_PATH") or _env_str("SFTP_KEY_PATH"),
         key_passphrase=_env_str("MEIK_MEDIA_KEY_PASSPHRASE"),
+        cpanel_token=_env_str("MEIK_MEDIA_CPANEL_TOKEN") or _env_str("CPANEL_TOKEN"),
+        cpanel_url=_env_str("MEIK_MEDIA_CPANEL_URL") or _env_str("CPANEL_URL"),
+        cpanel_verify_tls=_env_bool("MEIK_MEDIA_CPANEL_VERIFY_TLS", False),
     )
 
 

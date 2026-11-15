@@ -79,6 +79,7 @@ def test_all_tools_are_registered(isolated_env) -> None:
 
     names = sorted(tool.name for tool in asyncio.run(mcp.list_tools()))
     assert names == [
+        "blog_style_guide",
         "brand_kit",
         "generate_blog_figure",
         "generate_blog_hero",
@@ -88,7 +89,10 @@ def test_all_tools_are_registered(isolated_env) -> None:
         "list_generated_images",
         "media_server_status",
         "publish_asset",
+        "publish_stock_photo",
+        "search_stock_photos",
         "show_saved_image",
+        "size_presets",
     ]
 
 

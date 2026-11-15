@@ -74,6 +74,20 @@ PALETTES: dict[str, Palette] = {
         colors=(BRAND_VIOLET, BRAND_INK, BRAND_PAPER),
         for_light_background=True,
     ),
+    "editorial-natural": Palette(
+        id="editorial-natural",
+        name="Foto natural (registro blog)",
+        description=(
+            "Grado fotográfico realista: luz de día, grises neutros, piel real y el violeta/magenta de marca "
+            "sólo como acento en props. La paleta que usan las imágenes del blog."
+        ),
+        prompt=(
+            "natural photographic colour grade, daylight white balance, neutral greys and true skin tones, "
+            "brand violet #4F00C4 or magenta #FF5CF3 present only as a small accent on one prop or light source"
+        ),
+        colors=(BRAND_VIOLET,),
+        for_light_background=True,
+    ),
     "warm": Palette(
         id="warm",
         name="Warm accent",
@@ -248,9 +262,76 @@ STYLES: dict[str, StylePreset] = {
         best_for=("seguridad", "arquitectura", "compliance"),
         alt_hint="Plano técnico esquemático",
     ),
+    # ------------------------------------------------------------------ blog
+    "blog-satire": StylePreset(
+        id="blog-satire",
+        name="Blog · foto deadpan absurda",
+        description=(
+            "Foto editorial realista con una premisa ridícula actuada en serio: robots como colegas, "
+            "oficinas, concilios históricos. El caballo de batalla del blog."
+        ),
+        prompt=(
+            "photorealistic editorial photograph, a single ridiculous premise staged completely straight, "
+            "believable real-world environment (office, institution, boardroom, historical reenactment), "
+            "mundane props carrying the joke, robots and humans treated as equally ordinary colleagues, "
+            "deadpan expressions and body language, natural available light with bright even exposure, "
+            "neutral photographic colour grade (cool greys, real skin tones, white walls), "
+            "brand violet and magenta only as small accents on props or lighting, never a full-frame colour wash, "
+            "shallow depth of field, wide cinematic framing, sharp realistic detail, "
+            "no illustration, no cartoon stylisation, no neon glow"
+        ),
+        best_for=("hero de artículo", "LinkedIn", "portada de newsletter"),
+        alt_hint="Fotografía editorial irónica",
+    ),
+    "blog-diagram": StylePreset(
+        id="blog-diagram",
+        name="Blog · diagrama dibujado a mano",
+        description=(
+            "Diagrama tipo pizarra explicado por alguien: flechas gruesas con gradiente violeta-magenta, "
+            "iconos con sombra, títulos manuscritos. Pide allow_text=true para las anotaciones."
+        ),
+        prompt=(
+            "hand-drawn marker explainer diagram on a clean off-white board, wobbly hand-drawn arrows with "
+            "gradient fills going from violet #4F00C4 to magenta #FF5CF3, one contrasting mint-green accent "
+            "curve, simple sketched icons with soft drop shadows, thick handwritten headings, minimal axes "
+            "with arrowheads, generous empty space, the charming imprecision of a smart colleague drawing "
+            "while explaining, flat two-dimensional, not a photo, not 3D"
+        ),
+        best_for=("explicar un concepto", "figura interior", "carrusel educativo"),
+        alt_hint="Diagrama explicativo dibujado a mano",
+    ),
+    "blog-mascot": StylePreset(
+        id="blog-mascot",
+        name="Blog · mascota 3D",
+        description=(
+            "Render 3D de un personaje adorable con mirada deadpan entre objetos reales; "
+            "sirve para posts de producto o de cultura."
+        ),
+        prompt=(
+            "3D character render, glossy stylised mascot with friendly deadpan eyes, sitting among believable "
+            "real-world props, soft warm interior light, subtle subsurface glow, restrained Pixar-adjacent "
+            "look, high-detail materials, shallow depth of field, cinematic composition, "
+            "no text on the character itself"
+        ),
+        best_for=("cultura", "producto", "posts de comunidad"),
+        alt_hint="Render 3D de mascota",
+    ),
 }
 
 DEFAULT_STYLE = "abstract-geometric"
+
+# El blog de Meik Labs no usa arte abstracto de marca: usa escenas concretas,
+# deadpan y absurdas, con un tono relajado e irónico. Este bloque se añade solo
+# a los estilos que empiezan con "blog-".
+BLOG_TONE = (
+    "tone: relaxed, self-aware and dryly ironic; the absurdity is played completely straight "
+    "and the joke is obvious without being explained; one single clear idea per image; "
+    "no corporate stock-photo clichés such as handshakes, generic blue holograms or glowing brains; "
+    "Spanish (Chile) wording when any text appears"
+)
+
+BLOG_STYLES: tuple[str, ...] = ("blog-satire", "blog-diagram", "blog-mascot")
+
 
 
 @dataclass(frozen=True)

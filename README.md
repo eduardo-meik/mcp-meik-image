@@ -20,7 +20,11 @@ a resolución completa cuando el servidor corre en local.
 | `generate_pitch_slide_visual` | Visual por arquetipo de slide (`problem`, `solution`, `traction`, …) | 16:9 |
 | `generate_deck_background` | Fondo de slides de baja intensidad para poner texto encima | 16:9 |
 | `publish_asset` | Optimiza y sube al media server una imagen ya generada | Imagen + URL |
-| `media_server_status` | Diagnostica la conexión SFTP/FTP y la carpeta remota | JSON |
+| `media_server_status` | Diagnostica la conexión SFTP/FTP/cPanel y la carpeta remota | JSON |
+| `size_presets` | Tamaños por destino (LinkedIn 1200×627, OG, blog, story, slide…) | JSON |
+| `blog_style_guide` | El estilo editorial del blog capturado como sistema de prompts | JSON |
+| `search_stock_photos` | Busca fotos reales en Unsplash | JSON |
+| `publish_stock_photo` | Descarga, optimiza y publica una foto de Unsplash con atribución | Imagen + URL |
 | `list_generated_images` | Lista los assets guardados en local (solo con disco) | JSON |
 | `show_saved_image` | Vuelve a mostrar inline un asset guardado | Imagen |
 
@@ -31,6 +35,8 @@ Estilos: `abstract-geometric`, `gradient-mesh`, `quiet-surface`, `isometric-tech
 `line-art`, `editorial-photo`, `data-viz`, `glass-ui`, `topographic`, `collage`, `blueprint`.
 
 Paletas: `brand-dark`, `brand-light`, `brand-mono`, `neutral`, `warm`, `cool`, `none`.
+
+Registro de blog (tono relajado, irónico y absurdo): `blog-satire`, `blog-diagram`, `blog-mascot`.
 
 Arquetipos de slide: `title`, `problem`, `solution`, `product`, `market`, `traction`, `competition`,
 `team`, `roadmap`, `business-model`, `ask`, `quote`.
@@ -129,6 +135,7 @@ Plan Personal de Horizon: gratis, 200 servidores MCP, escala a cero cuando está
 | `MEIK_IMAGE_MAX_RETRIES` | `2` | Reintentos ante 429/5xx/red |
 | `MEIK_APP_URL` / `MEIK_APP_NAME` | meiklabs.com / Meik Labs Image MCP | Cabeceras de atribución de OpenRouter |
 | `LOG_LEVEL` | `INFO` | Nivel de log |
+| `UNSPLASH_ACCESS_KEY` | — | Habilita `search_stock_photos` / `publish_stock_photo` |
 | `MEIK_MEDIA_MODE` | `sftp` si hay host | `sftp` \| `ftp` \| `ftps` \| `off` |
 | `MEIK_MEDIA_HOST` / `_PORT` / `_USER` / `_PASSWORD` | — | Credenciales del hosting |
 | `MEIK_MEDIA_REMOTE_DIR` | — | Carpeta remota de destino |
@@ -136,6 +143,87 @@ Plan Personal de Horizon: gratis, 200 servidores MCP, escala a cero cuando está
 | `MEIK_MEDIA_KEY_PATH` / `_KEY_PASSPHRASE` | — | Auth SFTP por clave privada (alternativa a la contraseña) |
 | `MEIK_MEDIA_CPANEL_TOKEN` / `_CPANEL_URL` | — | Modo `cpanel`: subida vía API UAPI (Fileman) |
 | `MEIK_MEDIA_SUBDIR_BY_DATE` | `true` | Organizar en subcarpetas `YYYY-MM-DD` |
+
+## Estilo editorial del blog
+
+Las imágenes del blog (`https://static.meiklabs.com/img/blog`) no son arte abstracto de marca:
+son **escenas concretas, deadpan y absurdas**, con un tono relajado e irónico. Ese estilo está
+capturado en tres estilos y en la herramienta `blog_style_guide`.
+
+| Registro | Estilo | Cuándo | Ejemplo real |
+| --- | --- | --- | --- |
+| Foto deadpan | `blog-satire` | opinión, análisis, noticias | oficinista sepultado en papel con robots cargando más papel |
+| Diagrama dibujado a mano | `blog-diagram` | explicar un concepto o una brecha | dos curvas violeta/verde rotuladas «LA BRECHA DE LA IA» |
+| Mascota 3D | `blog-mascot` | cultura, producto, comunidad | cangrejo robot leyendo con lupa en una biblioteca |
+
+Reglas que se aplican automáticamente en los estilos `blog-*`:
+
+1. Una sola premisa ridícula, actuada completamente en serio.
+2. Escena concreta y reconocible (oficina, sala de reuniones, campamento, biblioteca).
+3. Lo absurdo está en la situación, no en el acabado: ejecución realista y sobria.
+4. Robots y humanos como colegas aburridos, mirada deadpan; nunca amenazantes.
+5. Texto en español sólo cuando aporta el chiste: 2-6 palabras por superficie.
+6. Nada de clichés: manos estrechándose, hologramas azules, cerebros brillantes.
+
+```json
+{"prompt": "Una jefa aprueba IA «para reducir reuniones»; ahora hay tres reuniones semanales para planificar la IA que reduce reuniones. Sala real, calendario saturado, un robot sostiene una pizarra con una reunión más, todos con cara neutra.",
+ "style": "blog-satire",
+ "output": {"size": "linkedin-post"}}
+```
+
+Para diagramas usa `style: "blog-diagram"` con `allow_text: true` — es el único caso donde el
+texto dentro de la imagen es el contenido. Recraft escribe bien rótulos cortos en español; si el
+texto tiene que ser perfecto, pasa `model: "google/gemini-3.1-flash-image"`.
+
+## Tamaños por destino
+
+`output.size` resuelve el tamaño exacto, la proporción para el modelo y el peso recomendado.
+Listado completo con `size_presets`.
+
+| Preset | Píxeles | Proporción | Peso | Nota |
+| --- | --- | --- | --- | --- |
+| `linkedin-post` | 1200×627 | 1.91:1 | ≤200 KB | post y post con enlace |
+| `linkedin-square` | 1024×1024 | 1:1 | ≤220 KB | feed y carrusel |
+| `linkedin-portrait` | 896×1120 | 4:5 | ≤220 KB | carrusel vertical |
+| `linkedin-company-cover` | 1344×336 | 4:1 | ≤150 KB | se recorta: motivo al centro |
+| `blog-hero` | 1344×768 | 16:9 | ≤250 KB | cabecera y OG |
+| `blog-inline` | 1216×896 | 4:3 | ≤220 KB | figura interior |
+| `blog-diagram` | 1216×860 | √2 | ≤350 KB | diagramas con anotaciones |
+| `blog-wide` | 1344×672 | 2:1 | ≤300 KB | editorial ancha |
+| `og-image` | 1200×630 | 1.91:1 | ≤200 KB | preview al compartir |
+| `instagram-story` | 768×1344 | 9:16 | ≤250 KB | story / reel |
+| `slide` | 1920×1080 | 16:9 | ≤400 KB | deck FHD (se interpola) |
+
+Recraft genera como máximo **1344 px de lado largo** (1344×768 en 16:9, 1216×896 en 4:3,
+1024×1024 en 1:1). Los presets están alineados a esa salida para no interpolar; cuando pides más
+(`slide`, `slide-4k`) el manifiesto lo marca en `optimization` y `source_dimensions`, y
+`size_presets` expone `needs_upscale`.
+
+## Unsplash: evaluación
+
+Integrado como fuente **opcional** (`UNSPLASH_ACCESS_KEY`), con `search_stock_photos` y
+`publish_stock_photo` (descarga, recorta, optimiza, publica y devuelve la atribución).
+
+**Aporta**
+- Fotografía real y bien producida: oficinas, industria, equipo, producto. Imposible de igualar
+  con un text-to-image de 3 segundos y gratis.
+- Cuando el artículo necesita credibilidad documental, no humor.
+
+**No aporta**
+- No puede inventar la escena absurda del blog (robots repartiendo papel, concilio prusiano con
+  logos). Para eso siguen los estilos `blog-*`.
+- Depende de un tercero: cuotas (50 req/h en modo demo, 5000 req/h tras aprobación) y
+  disponibilidad.
+
+**Licencia y obligaciones**
+- Unsplash License: uso comercial gratis, sin atribución legal obligatoria, pero **prohibido**
+  recompilar las fotos para ofrecer un servicio similar y prohibido venderlas sin modificar.
+- Las guías de la API piden atribución visible y disparar el endpoint de descarga al usar una
+  foto: el servidor lo hace y devuelve `attribution.credit_text` (`Foto: Autor / Unsplash`) más
+  los enlaces. Úsalo en el pie o en el `alt`.
+
+**Recomendación de uso**: `blog-satire` para todo lo que necesite el guiño del blog; Unsplash
+para casos de estudio, páginas de servicio y decks donde una foto real vende mejor.
 
 ## Tamaño, formato y peso
 
@@ -276,9 +364,12 @@ El JSON que acompaña a cada imagen indica `downscaled_for_client`, dimensiones,
 ```
 main.py                 FastMCP app + entrypoint (mcp)
 meik_image/config.py    Settings desde entorno/.env
-meik_image/brand.py     Paletas, estilos, formatos, arquetipos de slide
-meik_image/prompts.py   Composición de prompts y guardrails
+meik_image/brand.py     Paletas, estilos (incluye registro blog), formatos, arquetipos de slide
+meik_image/presets.py   Tamaños por destino (LinkedIn, blog, redes, decks) y salida nativa
+meik_image/styleguide.py El estilo editorial del blog como sistema de prompts
+meik_image/prompts.py   Composición de prompts, tono y guardrails
 meik_image/openrouter.py Cliente de /api/v1/images con reintentos
+meik_image/stock.py     Unsplash: búsqueda, descarga y atribución
 meik_image/optimize.py  Tamaño exacto, formatos (webp/jpeg/png/avif) y presupuesto de peso
 meik_image/media.py     Publicación SFTP/FTP al media server y diagnóstico
 meik_image/imaging.py   Detección de formato y ajuste del payload inline

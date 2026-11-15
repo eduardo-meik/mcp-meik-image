@@ -99,6 +99,7 @@ class Settings:
     output_format: str
     output_quality: int
     media: MediaConfig
+    unsplash_access_key: str | None = None
 
     @property
     def has_api_key(self) -> bool:
@@ -161,6 +162,7 @@ def load_settings() -> Settings:
         output_format=output_format,
         output_quality=_env_int("MEIK_OUTPUT_QUALITY", 82),
         media=_media_config(),
+        unsplash_access_key=_env_str("UNSPLASH_ACCESS_KEY"),
     )
 
 

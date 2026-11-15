@@ -7,6 +7,7 @@ against lettering unless the caller deliberately allows it.
 from __future__ import annotations
 
 from .brand import (
+    BLOG_TONE,
     DEFAULT_TEXT_SPACE,
     TEXT_SPACES,
     Palette,
@@ -62,6 +63,27 @@ def _guardrails(allow_text: bool) -> str | None:
     return ", ".join(pieces)
 
 
+def _tone_clause(style: StylePreset, tone: str | None = None) -> str | None:
+    """Blog styles carry the editorial voice of Meik Labs automatically."""
+    if tone:
+        return tone
+    if style.id.startswith("blog-"):
+        return BLOG_TONE
+    return None
+
+
+def _faces_clause(style: StylePreset, allow_text: bool) -> str | None:
+    """Editorial photo registers need real people, so the no-faces rule must relax."""
+    if style.id in {"blog-satire", "blog-mascot"}:
+        pieces = [] if allow_text else [NO_TEXT_GUARDRAIL]
+        pieces.append(
+            "ordinary believable people allowed, neutral deadpan expressions, "
+            "no glamour retouching, no stock-photo smiling"
+        )
+        return ", ".join(pieces)
+    return _guardrails(allow_text)
+
+
 def compose_freeform(
     prompt: str,
     *,
@@ -84,9 +106,10 @@ def compose_freeform(
             mood,
             must_include,
             _palette_clause(palette, strict_palette),
+            _tone_clause(style),
             _text_space_clause(text_space) if text_space else None,
             f"avoid: {must_avoid}" if _clean(must_avoid) else None,
-            _guardrails(allow_text),
+            _faces_clause(style, allow_text),
         ]
     )
 
@@ -116,9 +139,10 @@ def compose_blog_hero(
             keyword_clause,
             mood,
             _palette_clause(palette, strict_palette),
+            _tone_clause(style),
             "wide cinematic composition, subject weighted to one side, confident negative space",
             _text_space_clause(text_space),
-            _guardrails(allow_text),
+            _faces_clause(style, allow_text),
         ]
     )
 
@@ -139,9 +163,10 @@ def compose_blog_figure(
             style.prompt,
             mood,
             _palette_clause(palette, strict_palette),
+            _tone_clause(style),
             "self-contained central composition that reads well at small size",
             _text_space_clause(text_space),
-            _guardrails(allow_text),
+            _faces_clause(style, allow_text),
         ]
     )
 
@@ -168,7 +193,7 @@ def compose_slide_visual(
             _palette_clause(palette, strict_palette),
             "presentation-ready composition, readable from across a room at 16:9",
             _text_space_clause(text_space or slide.default_text_space),
-            _guardrails(allow_text),
+            _faces_clause(style, allow_text),
         ]
     )
 

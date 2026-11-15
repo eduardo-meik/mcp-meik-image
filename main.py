@@ -30,25 +30,41 @@ Servidor de generación de imágenes de Meik Labs (Recraft V4.1 Flash V2 vía Op
 Marca: violeta #4F00C4, magenta #FF5CF3, tinta #1C1C1C, papel #F5F5F5.
 Tipografías: Space Grotesk (títulos), Inter (cuerpo), JetBrains Mono (código).
 
-Flujo recomendado:
-1. Llama `brand_kit` para ver estilos, paletas, formatos y arquetipos de slide.
-2. Blog: `generate_blog_hero` (16:9, reserva espacio para el titular) y `generate_blog_figure` (4:3).
-3. Pitch deck: `generate_pitch_slide_visual` para cada slide y `generate_deck_background` (theme dark).
-4. Para todo lo demás usa `generate_image` con style/palette explícitos.
+Registro editorial del blog: NO es arte abstracto de marca. Es escena concreta, deadpan
+y absurda, con tono relajado e irónico (robots como colegas, oficinas, concilios
+históricos, diagramas dibujados a mano). Usa `blog_style_guide` antes de escribir un
+prompt de blog.
 
-Entrega (parámetro `output` en cada herramienta de generación):
-- `width`/`height` + `fit` producen un tamaño exacto en píxeles (Recraft sólo entrega proporciones).
-- `format` (webp por defecto, o jpeg/png/avif), `quality` y `max_kb` controlan peso.
-- Con el media server configurado, cada imagen se publica y el manifiesto trae `public_url`.
-  Usa `media_server_status` si la publicación falla y `publish_asset` para reintentar.
+Flujo recomendado:
+1. `brand_kit` para paletas/estilos y `blog_style_guide` para el registro del blog.
+2. Blog: `generate_blog_hero` con style=blog-satire (foto deadpan) o blog-diagram
+   (explicativo, allow_text=true). `generate_blog_figure` para figuras intermedias.
+3. Redes: `generate_image` con style=blog-satire y output.size=linkedin-post.
+4. Pitch deck: `generate_pitch_slide_visual` (estilos glass-ui/isometric-tech/quiet-surface).
+5. Foto real en vez de ilustración: `search_stock_photos` y `publish_stock_photo`
+   (Unsplash, requiere UNSPLASH_ACCESS_KEY; devuelve atribución obligatoria).
+
+Tamaños: usa `output.size` en vez de inventar píxeles. Presets disponibles con
+`size_presets`: linkedin-post 1200x627, linkedin-square 1024x1024, linkedin-portrait,
+linkedin-company-cover 1344x336, blog-hero 1344x768, blog-inline 1216x896,
+blog-diagram 1216x860, blog-wide 1344x672, og-image 1200x630, x-post, x-card,
+instagram-square, instagram-story, youtube-thumb, slide 1920x1080, pptx, slide-4k.
+El modelo genera como máximo 1344 px de lado largo: por sobre eso se interpola y el
+manifiesto lo marca en `optimization` y `source_dimensions`.
+
+Formato y peso: `output.format` (webp por defecto, o jpeg/png/avif), `quality` y
+`max_kb` (webp pesa ~3x menos que jpeg para el mismo arte).
+
+Publicación: con el media server configurado, cada imagen se sube y el manifiesto trae
+`public_url`. `media_server_status` diagnostica y `publish_asset` reintenta.
 
 Reglas de uso:
-- Nunca pidas palabras o letras dentro de la imagen: el copy se compone en HTML o en la slide.
-- Usa siempre las paletas brand-dark o brand-light salvo que se pida otra cosa.
-- Para blog prefiere 1200x630 en webp/jpeg con max_kb 250; para slides usa 1920x1080.
-- Cada herramienta devuelve las imágenes inline (para verlas) y un JSON con prompt, coste,
-  dimensiones, formato, peso, ruta local y URL pública.
-- El texto alternativo se entrega como `alt_text_hint`: refínalo antes de publicarlo.
+- Nunca pidas texto si no es un diagrama o un chiste que dependa de un cartel: el copy
+  va en HTML. Con texto, usa 2-6 palabras por superficie y mayúsculas.
+- Si las palabras tienen que leerse sí o sí, pasa `model="google/gemini-3.1-flash-image"`.
+- Paletas: brand-dark o brand-light; el registro blog tolera la paleta de marca como acento.
+- Cada herramienta devuelve las imágenes inline más un JSON con prompt, coste, tamaño,
+  formato, peso, ruta local, URL pública y `alt_text_hint` para refinar.
 """
 
 mcp = FastMCP(

@@ -32,11 +32,14 @@ from .brand import (
     resolve_style,
 )
 from .config import load_settings
-from .imaging import extension_for, fit_inline
+from .imaging import dimensions, extension_for, fit_inline
 from .media import MediaError, MediaPublisher, publisher_from_settings
 from .openrouter import GeneratedImage, GenerationResult, ImageGenerationError, OpenRouterImageClient
 from .optimize import extension_of, normalize_format, optimize_image
+from .presets import SIZES, catalog as size_catalog, resolve_size
+from .stock import StockError, UnsplashClient, client_from_settings
 from .storage import AssetStore, slugify
+from .styleguide import blog_style_guide as build_blog_style_guide
 
 logger = logging.getLogger("meik_image.tools")
 
@@ -45,6 +48,7 @@ StyleName = Literal[tuple(sorted(STYLES))]  # type: ignore[valid-type]
 FormatName = Literal[tuple(sorted(FORMATS))]  # type: ignore[valid-type]
 SlideTypeName = Literal[tuple(sorted(SLIDE_TYPES))]  # type: ignore[valid-type]
 TextSpace = Literal[tuple(sorted(TEXT_SPACES))]  # type: ignore[valid-type]
+SizeName = Literal[tuple(sorted(SIZES))]  # type: ignore[valid-type]
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
 GENERATES = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True)
@@ -53,6 +57,16 @@ GENERATES = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorld
 class OutputSpec(BaseModel):
     """Tamaño, formato y publicación de la imagen entregada."""
 
+    size: SizeName | None = Field(
+        None,
+        description=(
+            "Preset de tamaño por destino: linkedin-post (1200x627), linkedin-square, "
+            "linkedin-company-cover (1584x396), blog-hero (1600x900), blog-diagram (1600x1131), "
+            "blog-wide (2400x1200), og-image (1200x630), instagram-story, youtube-thumb, slide "
+            "(1920x1080), etc. Si lo indicas, sobrescribe width/height/fit y elige la proporción "
+            "correcta para el modelo."
+        ),
+    )
     format: Literal["webp", "jpeg", "png", "avif", "auto"] = Field(
         "auto",
         description=(
@@ -91,11 +105,39 @@ def _store() -> AssetStore:
     return AssetStore(load_settings().image_dir)
 
 
-def _generate(prompt: str, *, aspect_ratio: str, n: int, palette: Palette) -> GenerationResult:
+def _generate(
+    prompt: str,
+    *,
+    aspect_ratio: str,
+    n: int,
+    palette: Palette,
+    model: str | None = None,
+) -> GenerationResult:
     settings = load_settings()
     client = OpenRouterImageClient(settings)
     colors = palette.colors if palette.id != "none" else None
-    return client.generate(prompt, aspect_ratio=aspect_ratio, n=n, palette_colors=colors)
+    return client.generate(prompt, aspect_ratio=aspect_ratio, n=n, model=model, palette_colors=colors)
+
+
+def _resolve_output(
+    output: OutputSpec | None,
+    *,
+    default_aspect: str,
+) -> tuple[OutputSpec, str]:
+    """Expand a size preset into pixels and pick the closest aspect ratio for the model."""
+    spec = output or OutputSpec()
+    preset = resolve_size(spec.size)
+    if preset is None:
+        return spec, default_aspect
+    resolved = spec.model_copy(
+        update={
+            "width": spec.width or preset.width,
+            "height": spec.height or preset.height,
+            "fit": preset.fit,
+            "max_kb": spec.max_kb or preset.max_kb,
+        }
+    )
+    return resolved, preset.model_ratio
 
 
 def _deliver(
@@ -122,6 +164,7 @@ def _deliver(
     stamp = datetime.now().strftime("%H%M%S")
 
     for index, generated in enumerate(result.images, start=1):
+        source_w, source_h = dimensions(generated.data)
         processed = optimize_image(
             generated.data,
             generated.media_type,
@@ -139,6 +182,7 @@ def _deliver(
             "bytes": processed.size_bytes,
             "width": processed.width,
             "height": processed.height,
+            "source_dimensions": f"{source_w}x{source_h}" if source_w else None,
             "optimization": list(processed.steps),
         }
 
@@ -273,6 +317,11 @@ def register_tools(mcp: FastMCP) -> None:
             "slide_types": {
                 key: {"name": s.name, "description": s.description} for key, s in kit.slide_types.items()
             },
+            "sizes": size_catalog(),
+            "blog_register": {
+                "estilos": ["blog-satire", "blog-diagram", "blog-mascot"],
+                "tono": "relajado, irónico y absurdo; consulta la herramienta blog_style_guide",
+            },
             "defaults": {
                 "style": DEFAULT_STYLE,
                 "palette": DEFAULT_PALETTE,
@@ -340,10 +389,15 @@ def register_tools(mcp: FastMCP) -> None:
             OutputSpec | None,
             Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
         ] = None,
+        model: Annotated[
+            str | None,
+            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
+        ] = None,
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
             resolved_palette = resolve_palette(palette)
+            output_spec, aspect = _resolve_output(output, default_aspect=aspect_ratio)
             final_prompt = prompts.compose_freeform(
                 prompt,
                 style=resolved_style,
@@ -357,8 +411,9 @@ def register_tools(mcp: FastMCP) -> None:
             )
             result = _generate(
                 final_prompt,
-                aspect_ratio=aspect_ratio,
+                aspect_ratio=aspect,
                 n=n,
+                model=model,
                 palette=resolved_palette,
             )
         except (ValueError, ImageGenerationError) as exc:
@@ -369,7 +424,7 @@ def register_tools(mcp: FastMCP) -> None:
             result,
             prompt=final_prompt,
             slug=file_slug,
-            output=output,
+            output=output_spec,
             meta={
                 "kind": "freeform",
                 "style": resolved_style.id,
@@ -415,11 +470,16 @@ def register_tools(mcp: FastMCP) -> None:
             OutputSpec | None,
             Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
         ] = None,
+        model: Annotated[
+            str | None,
+            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
+        ] = None,
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
             resolved_palette = resolve_palette(palette)
             media_format = resolve_format("blog-hero")
+            output_spec, aspect = _resolve_output(output, default_aspect=media_format.aspect_ratio)
             final_prompt = prompts.compose_blog_hero(
                 title=title,
                 angle=angle,
@@ -433,8 +493,9 @@ def register_tools(mcp: FastMCP) -> None:
             )
             result = _generate(
                 final_prompt,
-                aspect_ratio=media_format.aspect_ratio,
+                aspect_ratio=aspect,
                 n=n,
+                model=model,
                 palette=resolved_palette,
             )
         except (ValueError, ImageGenerationError) as exc:
@@ -444,7 +505,7 @@ def register_tools(mcp: FastMCP) -> None:
             result,
             prompt=final_prompt,
             slug=f"blog-hero-{title}",
-            output=output,
+            output=output_spec,
             meta={
                 "kind": "blog-hero",
                 "title": title,
@@ -482,11 +543,16 @@ def register_tools(mcp: FastMCP) -> None:
             OutputSpec | None,
             Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
         ] = None,
+        model: Annotated[
+            str | None,
+            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
+        ] = None,
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
             resolved_palette = resolve_palette(palette)
             media_format = resolve_format("blog-inline")
+            output_spec, aspect = _resolve_output(output, default_aspect=media_format.aspect_ratio)
             final_prompt = prompts.compose_blog_figure(
                 concept=concept,
                 style=resolved_style,
@@ -497,8 +563,9 @@ def register_tools(mcp: FastMCP) -> None:
             )
             result = _generate(
                 final_prompt,
-                aspect_ratio=media_format.aspect_ratio,
+                aspect_ratio=aspect,
                 n=n,
+                model=model,
                 palette=resolved_palette,
             )
         except (ValueError, ImageGenerationError) as exc:
@@ -508,7 +575,7 @@ def register_tools(mcp: FastMCP) -> None:
             result,
             prompt=final_prompt,
             slug=f"blog-figura-{concept}",
-            output=output,
+            output=output_spec,
             meta={
                 "kind": "blog-figure",
                 "concept": concept,
@@ -554,12 +621,17 @@ def register_tools(mcp: FastMCP) -> None:
             OutputSpec | None,
             Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
         ] = None,
+        model: Annotated[
+            str | None,
+            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
+        ] = None,
     ) -> list[Any]:
         try:
             resolved_slide = resolve_slide_type(slide_type)
             resolved_style = resolve_style(style)
             resolved_palette = resolve_palette(palette)
             media_format = resolve_format("slide")
+            output_spec, aspect = _resolve_output(output, default_aspect=media_format.aspect_ratio)
             final_prompt = prompts.compose_slide_visual(
                 slide=resolved_slide,
                 title=title,
@@ -572,8 +644,9 @@ def register_tools(mcp: FastMCP) -> None:
             )
             result = _generate(
                 final_prompt,
-                aspect_ratio=media_format.aspect_ratio,
+                aspect_ratio=aspect,
                 n=n,
+                model=model,
                 palette=resolved_palette,
             )
         except (ValueError, ImageGenerationError) as exc:
@@ -584,7 +657,7 @@ def register_tools(mcp: FastMCP) -> None:
             result,
             prompt=final_prompt,
             slug=f"slide-{resolved_slide.id}-{title}",
-            output=output,
+            output=output_spec,
             meta={
                 "kind": "pitch-slide",
                 "slide_type": resolved_slide.id,
@@ -629,11 +702,16 @@ def register_tools(mcp: FastMCP) -> None:
             OutputSpec | None,
             Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
         ] = None,
+        model: Annotated[
+            str | None,
+            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
+        ] = None,
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
             resolved_palette = resolve_palette(palette)
             media_format = resolve_format("slide")
+            output_spec, aspect = _resolve_output(output, default_aspect=media_format.aspect_ratio)
             final_prompt = prompts.compose_background(
                 theme=theme,
                 style=resolved_style,
@@ -643,8 +721,9 @@ def register_tools(mcp: FastMCP) -> None:
             )
             result = _generate(
                 final_prompt,
-                aspect_ratio=media_format.aspect_ratio,
+                aspect_ratio=aspect,
                 n=n,
+                model=model,
                 palette=resolved_palette,
             )
         except (ValueError, ImageGenerationError) as exc:
@@ -654,7 +733,7 @@ def register_tools(mcp: FastMCP) -> None:
             result,
             prompt=final_prompt,
             slug=f"deck-fondo-{theme}",
-            output=output,
+            output=output_spec,
             meta={
                 "kind": "deck-background",
                 "theme": theme,
@@ -728,6 +807,149 @@ def register_tools(mcp: FastMCP) -> None:
         ]
 
     @mcp.tool(
+        name="size_presets",
+        description=(
+            "Lista los tamaños paramétricos por destino (LinkedIn 1200x627, portada de empresa "
+            "1584x396, blog-hero 1600x900, blog-diagram 1600x1131, OG 1200x630, story 1080x1920, "
+            "slide 1920x1080, etc.) con su proporción, propósito y peso recomendado. "
+            "Úsalo para elegir el valor de output.size."
+        ),
+        annotations=READ_ONLY,
+        output_schema=None,
+    )
+    def size_presets() -> str:
+        return json.dumps(
+            {
+                "sizes": size_catalog(),
+                "uso": "Pasa el id en output.size; puedes sobrescribir width/height/fit/max_kb.",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    @mcp.tool(
+        name="blog_style_guide",
+        description=(
+            "Devuelve el estilo editorial del blog de Meik Labs capturado como sistema de prompts: "
+            "tono relajado, irónico y absurdo, los tres registros (foto deadpan, diagrama dibujado a "
+            "mano, mascota 3D), reglas, recetas de prompt y política de texto en imagen. "
+            "Consúltalo antes de escribir un prompt de blog."
+        ),
+        annotations=READ_ONLY,
+        output_schema=None,
+    )
+    def blog_style_guide() -> str:
+        return json.dumps(build_blog_style_guide(), ensure_ascii=False, indent=2)
+
+    @mcp.tool(
+        name="search_stock_photos",
+        description=(
+            "Busca fotografías reales en Unsplash (oficinas, industria, equipo, producto) cuando una "
+            "foto auténtica comunica mejor que una ilustración. Devuelve ids, descripción, autor y "
+            "atribución lista para usar. Requiere UNSPLASH_ACCESS_KEY. No sirve para el registro "
+            "satírico del blog: eso se genera con los estilos blog-*."
+        ),
+        annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True),
+        output_schema=None,
+    )
+    def search_stock_photos(
+        query: Annotated[str, Field(description="Qué buscar, en inglés suele dar mejores resultados.")],
+        orientation: Annotated[
+            Literal["landscape", "portrait", "squarish"] | None,
+            Field(description="Orientación preferida de la foto."),
+        ] = "landscape",
+        count: Annotated[int, Field(ge=1, le=30, description="Cuántos resultados.")] = 6,
+        color: Annotated[
+            Literal["black_and_white", "black", "white", "yellow", "orange", "red", "purple", "magenta", "green", "teal", "blue"] | None,
+            Field(description="Filtro de color dominante."),
+        ] = None,
+    ) -> str:
+        client = client_from_settings()
+        if not client.configured:
+            raise ToolError(
+                "Unsplash no está configurado. Añade UNSPLASH_ACCESS_KEY al entorno "
+                "(https://unsplash.com/oauth/applications → Access Key)."
+            )
+        try:
+            photos = client.search(query, orientation=orientation, count=count, color=color)
+        except StockError as exc:
+            raise ToolError(str(exc)) from exc
+        return json.dumps(
+            {
+                "query": query,
+                "count": len(photos),
+                "photos": [
+                    {
+                        "id": photo.id,
+                        "description": photo.description,
+                        "dimensions": f"{photo.width}x{photo.height}",
+                        "color": photo.color,
+                        "attribution": photo.attribution,
+                        "preview_url": photo.urls.get("small"),
+                    }
+                    for photo in photos
+                ],
+                "siguiente_paso": "Elige un id y llama publish_stock_photo con el tamaño destino.",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    @mcp.tool(
+        name="publish_stock_photo",
+        description=(
+            "Descarga una foto de Unsplash por id, la recorta al tamaño pedido, la optimiza, la "
+            "publica en el media server y devuelve la URL pública junto con la atribución "
+            "obligatoria (autor + enlace)."
+        ),
+        annotations=GENERATES,
+        output_schema=None,
+    )
+    def publish_stock_photo(
+        photo_id: Annotated[str, Field(description="Id de Unsplash obtenido con search_stock_photos.")],
+        output: Annotated[
+            OutputSpec | None,
+            Field(description="Tamaño destino (size), formato, peso y publicación."),
+        ] = None,
+    ) -> list[Any]:
+        client = client_from_settings()
+        if not client.configured:
+            raise ToolError(
+                "Unsplash no está configurado. Añade UNSPLASH_ACCESS_KEY al entorno."
+            )
+        try:
+            photo = client.get_photo(photo_id)
+            data = client.fetch(photo, size="full" if photo.urls.get("full") else "regular")
+        except StockError as exc:
+            raise ToolError(str(exc)) from exc
+
+        spec, _ = _resolve_output(output, default_aspect="16:9")
+        result = GenerationResult(
+            images=(GeneratedImage(data=data, media_type="image/jpeg"),),
+            model="unsplash",
+            aspect_ratio="auto",
+            cost_usd=0.0,
+            duration_seconds=0.0,
+        )
+        meta: dict[str, Any] = {
+            "kind": "stock-photo",
+            "source": "unsplash",
+            "photo_id": photo.id,
+            "description": photo.description,
+            "attribution": photo.attribution,
+            "style": "editorial-photo",
+            "palette": "none",
+            "alt_text_hint": f"Foto: {photo.description or 'imagen de archivo'} ({photo.photographer} / Unsplash).",
+        }
+        return _deliver(
+            result,
+            prompt=f"Unsplash photo {photo.id}: {photo.description or ''}".strip(),
+            slug=f"stock-{photo.id}",
+            output=spec,
+            meta=meta,
+        )
+
+    @mcp.tool(
         name="publish_asset",
         description=(
             "Optimiza y publica en el media server (cPanel) una imagen ya generada, por asset_id. "
@@ -749,7 +971,7 @@ def register_tools(mcp: FastMCP) -> None:
             raise ToolError(f"No encontré el asset '{asset_id}' en el almacenamiento local.")
 
         data, media, sidecar = loaded
-        spec = output or OutputSpec()
+        spec, _ = _resolve_output(output, default_aspect="1:1")
         settings = load_settings()
         try:
             processed = optimize_image(

@@ -119,3 +119,42 @@ def test_style_guide_documents_registers_rules_and_references() -> None:
     assert len(guide["referencias_reales"]) >= 5
     assert "texto_en_imagen" in guide
     assert "absurd" in guide["tono"] or "irónic" in guide["tono"]
+
+
+def test_natural_palette_applies_no_provider_colour_controls() -> None:
+    """A colour control on the provider is what tinted the photos magenta."""
+    natural = resolve_palette("natural")
+
+    assert natural.colors == ()
+    assert "no magenta or violet tint" in natural.prompt
+    assert "no colour cast" in natural.prompt
+
+
+def test_editorial_natural_is_an_alias_of_natural() -> None:
+    assert resolve_palette("editorial-natural") is resolve_palette("natural")
+
+
+def test_blog_style_prompt_forbids_the_brand_colour_wash() -> None:
+    prompt = prompts.compose_blog_hero(
+        title="CapLite explica la banca del futuro",
+        angle="por qué una cuenta digital no necesita sucursal",
+        keywords=None,
+        style=resolve_style("blog-satire"),
+        palette=resolve_palette("natural"),
+    )
+
+    assert "no colour cast" in prompt
+    assert "brand violet and magenta only as small accents" not in prompt
+    assert "no gradient overlay or vignette" in prompt
+
+
+def test_blog_tools_default_to_the_natural_palette() -> None:
+    import asyncio
+
+    from main import mcp
+
+    tools = {tool.name: tool for tool in asyncio.run(mcp.list_tools())}
+    for name in ("generate_blog_hero", "generate_blog_figure"):
+        schema = tools[name].parameters
+        palette = schema["properties"]["palette"]
+        assert palette.get("default") == "natural", name

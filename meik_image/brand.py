@@ -74,18 +74,19 @@ PALETTES: dict[str, Palette] = {
         colors=(BRAND_VIOLET, BRAND_INK, BRAND_PAPER),
         for_light_background=True,
     ),
-    "editorial-natural": Palette(
-        id="editorial-natural",
-        name="Foto natural (registro blog)",
+    "natural": Palette(
+        id="natural",
+        name="Natural (foto real)",
         description=(
-            "Grado fotográfico realista: luz de día, grises neutros, piel real y el violeta/magenta de marca "
-            "sólo como acento en props. La paleta que usan las imágenes del blog."
+            "Grado fotográfico neutro: luz de día, blancos reales, piel real. Sin filtro de color ni "
+            "acentos de marca. Es la paleta por defecto del blog."
         ),
         prompt=(
-            "natural photographic colour grade, daylight white balance, neutral greys and true skin tones, "
-            "brand violet #4F00C4 or magenta #FF5CF3 present only as a small accent on one prop or light source"
+            "natural photographic colour, balanced daylight white balance, honest whites and true skin tones, "
+            "no colour cast, no coloured gels or lighting, no magenta or violet tint, no gradient overlay, "
+            "no vignette"
         ),
-        colors=(BRAND_VIOLET,),
+        colors=(),
         for_light_background=True,
     ),
     "warm": Palette(
@@ -117,6 +118,10 @@ PALETTES: dict[str, Palette] = {
 }
 
 DEFAULT_PALETTE = "brand-dark"
+
+# Alias heredado: antes esta paleta inyectaba violeta por controls.colors y teñía
+# las fotos. Ahora apunta a la paleta natural, sin filtro de color.
+PALETTES["editorial-natural"] = PALETTES["natural"]
 
 
 @dataclass(frozen=True)
@@ -275,8 +280,8 @@ STYLES: dict[str, StylePreset] = {
             "believable real-world environment (office, institution, boardroom, historical reenactment), "
             "mundane props carrying the joke, robots and humans treated as equally ordinary colleagues, "
             "deadpan expressions and body language, natural available light with bright even exposure, "
-            "neutral photographic colour grade (cool greys, real skin tones, white walls), "
-            "brand violet and magenta only as small accents on props or lighting, never a full-frame colour wash, "
+            "clean neutral photographic colour, honest whites and real skin tones, "
+            "no colour cast, no coloured lighting, no magenta or violet tint, no gradient overlay or vignette, "
             "shallow depth of field, wide cinematic framing, sharp realistic detail, "
             "no illustration, no cartoon stylisation, no neon glow"
         ),
@@ -326,6 +331,7 @@ DEFAULT_STYLE = "abstract-geometric"
 BLOG_TONE = (
     "tone: relaxed, self-aware and dryly ironic; the absurdity is played completely straight "
     "and the joke is obvious without being explained; one single clear idea per image; "
+    "natural photographic colour with no colour cast and no brand-colour filter; "
     "no corporate stock-photo clichés such as handshakes, generic blue holograms or glowing brains; "
     "Spanish (Chile) wording when any text appears"
 )

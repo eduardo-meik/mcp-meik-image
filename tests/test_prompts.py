@@ -65,10 +65,52 @@ def test_blog_hero_reserves_space_for_the_headline() -> None:
         text_space="left",
     )
 
-    assert "Automatización con criterio" in prompt
+    assert "cómo priorizar procesos antes de comprar IA" in prompt
     assert "visual cues evoking procesos, datos, priorización" in prompt
     assert "the left third" in prompt
     assert "Meik Labs" in prompt
+
+
+def test_blog_hero_does_not_quote_the_title_when_text_is_unwanted() -> None:
+    """A quoted title gets rendered as lettering by the model."""
+    prompt = prompts.compose_blog_hero(
+        title="CapLite: qué es y por qué importa",
+        angle="una cuenta digital sin sucursal",
+        keywords=None,
+        style=resolve_style("blog-satire"),
+        palette=resolve_palette("natural"),
+    )
+
+    assert '"CapLite: qué es y por qué importa"' not in prompt
+    assert "do not write the article title" in prompt
+    assert "absolutely no text" in prompt
+
+
+def test_blog_hero_quotes_the_title_when_text_is_requested() -> None:
+    prompt = prompts.compose_blog_hero(
+        title="CapLite",
+        angle=None,
+        keywords=None,
+        style=resolve_style("blog-satire"),
+        palette=resolve_palette("natural"),
+        allow_text=True,
+    )
+
+    assert '"CapLite"' in prompt
+    assert "do not write the article title" not in prompt
+
+
+def test_slide_visual_does_not_quote_the_title_by_default() -> None:
+    prompt = prompts.compose_slide_visual(
+        slide=resolve_slide_type("title"),
+        title="Meik Labs · Serie A",
+        key_message="categoría nueva de automatización",
+        style=resolve_style("abstract-geometric"),
+        palette=resolve_palette("brand-dark"),
+    )
+
+    assert '"Meik Labs · Serie A"' not in prompt
+    assert "do not write the slide title" in prompt
 
 
 def test_slide_visual_uses_archetype_default_text_space() -> None:

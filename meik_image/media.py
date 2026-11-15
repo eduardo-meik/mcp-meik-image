@@ -227,7 +227,7 @@ class MediaPublisher:
             response = httpx.post(
                 url,
                 headers=self._cpanel_headers(),
-                data={"dir": folder},
+                data={"dir": folder, "overwrite": "1"},
                 files={"file-1": (posixpath.basename(remote_path), data, "application/octet-stream")},
                 timeout=60,
                 verify=self._cfg.cpanel_verify_tls,

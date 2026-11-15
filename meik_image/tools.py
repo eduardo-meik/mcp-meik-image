@@ -403,10 +403,14 @@ def register_tools(mcp: FastMCP) -> None:
             OutputSpec | None,
             Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
         ] = None,
-        model: Annotated[
-            str | None,
-            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
-        ] = None,
+        model: Annotated[
+
+            str | None,
+
+            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
+
+        ] = None,
+
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
@@ -471,7 +475,10 @@ def register_tools(mcp: FastMCP) -> None:
             Field(description="3-6 conceptos clave que la imagen debe evocar visualmente."),
         ] = None,
         style: Annotated[StyleName, Field(description="Preset visual.")] = DEFAULT_STYLE,
-        palette: Annotated[PaletteName, Field(description="Paleta de marca.")] = DEFAULT_PALETTE,
+        palette: Annotated[
+            PaletteName,
+            Field(description="Paleta de color. Default natural: foto neutra sin filtro."),
+        ] = "natural",
         text_space: Annotated[
             TextSpace,
             Field(description="Lado donde se reserva el espacio para el titular."),
@@ -484,10 +491,14 @@ def register_tools(mcp: FastMCP) -> None:
             OutputSpec | None,
             Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
         ] = None,
-        model: Annotated[
-            str | None,
-            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
-        ] = None,
+        model: Annotated[
+
+            str | None,
+
+            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
+
+        ] = None,
+
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
@@ -548,7 +559,10 @@ def register_tools(mcp: FastMCP) -> None:
     def generate_blog_figure(
         concept: Annotated[str, Field(description="Concepto o sección que la figura debe ilustrar.")],
         style: Annotated[StyleName, Field(description="Preset visual.")] = "flat-vector",
-        palette: Annotated[PaletteName, Field(description="Paleta de marca.")] = "brand-light",
+        palette: Annotated[
+            PaletteName,
+            Field(description="Paleta de color. Default natural: foto neutra sin filtro."),
+        ] = "natural",
         n: Annotated[int, Field(ge=1, le=6, description="Cantidad de variantes.")] = 1,
         mood: Annotated[str | None, Field(description="Tono emocional.")] = None,
         strict_palette: Annotated[bool, Field(description="Forzar colores de marca.")] = True,
@@ -557,10 +571,14 @@ def register_tools(mcp: FastMCP) -> None:
             OutputSpec | None,
             Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
         ] = None,
-        model: Annotated[
-            str | None,
-            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
-        ] = None,
+        model: Annotated[
+
+            str | None,
+
+            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
+
+        ] = None,
+
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)
@@ -635,10 +653,14 @@ def register_tools(mcp: FastMCP) -> None:
             OutputSpec | None,
             Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
         ] = None,
-        model: Annotated[
-            str | None,
-            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
-        ] = None,
+        model: Annotated[
+
+            str | None,
+
+            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
+
+        ] = None,
+
     ) -> list[Any]:
         try:
             resolved_slide = resolve_slide_type(slide_type)
@@ -716,10 +738,14 @@ def register_tools(mcp: FastMCP) -> None:
             OutputSpec | None,
             Field(description="Tamaño exacto (px), formato de salida y publicación en el media server."),
         ] = None,
-        model: Annotated[
-            str | None,
-            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
-        ] = None,
+        model: Annotated[
+
+            str | None,
+
+            Field(description="Modelo de OpenRouter para esta llamada. Usa google/gemini-3.1-flash-image cuando la imagen deba llevar texto legible en español. Default: el configurado en el servidor."),
+
+        ] = None,
+
     ) -> list[Any]:
         try:
             resolved_style = resolve_style(style)

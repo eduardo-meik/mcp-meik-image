@@ -34,8 +34,8 @@ RULES: list[str] = [
     "Referencias locales reconocibles para el lector chileno (lugares, cargos,"
     " instituciones) cuando el artículo lo permita.",
     "Composición ancha tipo editorial, luz natural o de ventana, exposición pareja y"
-    " grado de color neutro: el violeta/magenta de marca aparece como acento en un prop,"
-    " nunca como baño de color de todo el encuadre.",
+    " color fotográfico neutro: sin filtro, sin gels de color, sin viñeta ni degradado"
+    " de marca sobre la foto.",
     "Prohibido el cliché: manos estrechándose, hologramas azules, cerebros brillantes,"
     " personas señalando gráficos.",
 ]
@@ -54,7 +54,7 @@ REGISTER_GUIDANCE: dict[str, dict[str, Any]] = {
         ),
         "allow_text": "opcional (rótulos y pantallas cortos)",
         "size": "linkedin-post o blog-hero",
-        "paleta": "editorial-natural (recomendada) o neutral; brand-dark tiñe toda la escena",
+        "paleta": "natural (foto neutra, sin filtro de color). Evita brand-dark: tiñe la escena",
     },
     "blog-diagram": {
         "cuando": "Explicar un concepto, una brecha o un modelo mental. Reemplaza al típico gráfico de consultora.",

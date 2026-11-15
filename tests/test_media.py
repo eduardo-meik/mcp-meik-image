@@ -230,7 +230,7 @@ def test_cpanel_upload_posts_multipart_and_builds_url(monkeypatch: pytest.Monkey
 
     assert captured["url"] == "https://cpanel.meiklabs.com:2083/execute/Fileman/upload_files"
     assert captured["headers"]["Authorization"] == "cpanel meiklabs:TOKEN123"
-    assert captured["data"] == {"dir": "/home2/meiklabs/public_html/assets/blog/2026-11-15"}
+    assert captured["data"] == {"dir": "/home2/meiklabs/public_html/assets/blog/2026-11-15", "overwrite": "1"}
     assert captured["files"]["file-1"][0] == "hero.webp"
     assert published.url == "https://meiklabs.com/assets/blog/2026-11-15/hero.webp"
     assert published.transport == "cpanel"
@@ -317,3 +317,26 @@ def test_publish_error_names_the_missing_variables(monkeypatch: pytest.MonkeyPat
         publisher.publish(b"binary", "x.webp")
     assert "MEIK_MEDIA_CPANEL_TOKEN" in str(excinfo.value)
     assert "modo actual: cpanel" in str(excinfo.value)
+
+
+def test_cpanel_upload_overwrites_an_existing_slug(monkeypatch: pytest.MonkeyPatch) -> None:
+    """cPanel refuses to overwrite unless asked; blog slugs must be reusable."""
+    import httpx
+
+    captured: dict = {}
+
+    class Ok:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"status": 1}
+
+    def fake_post(url, **kwargs):
+        captured.update(kwargs)
+        return Ok()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    MediaPublisher(_cfg(mode="cpanel", password=None, cpanel_token="T")).publish(b"x", "post.webp")
+
+    assert captured["data"]["overwrite"] == "1"

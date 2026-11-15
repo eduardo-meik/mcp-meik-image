@@ -132,9 +132,14 @@ def compose_blog_hero(
         cleaned = [k.strip() for k in keywords if k and k.strip()]
         if cleaned:
             keyword_clause = "visual cues evoking " + ", ".join(cleaned)
+    # A quoted title gets rendered as lettering, so only name it when text is wanted.
+    if allow_text:
+        subject = f'hero illustration for a Meik Labs blog article titled "{_clean(title)}" about {topic}'
+    else:
+        subject = f"hero illustration for a Meik Labs blog article about {topic}"
     return _join(
         [
-            f"hero illustration for a Meik Labs blog article titled \"{_clean(title)}\" about {topic}",
+            subject,
             style.prompt,
             keyword_clause,
             mood,
@@ -142,6 +147,7 @@ def compose_blog_hero(
             _tone_clause(style),
             "wide cinematic composition, subject weighted to one side, confident negative space",
             _text_space_clause(text_space),
+            None if allow_text else "do not write the article title or any headline into the image",
             _faces_clause(style, allow_text),
         ]
     )
@@ -184,15 +190,22 @@ def compose_slide_visual(
 ) -> str:
     message = _clean(key_message)
     message_clause = f"metaphor for {message}" if message else None
+    # Quoted titles tend to get painted into the slide when text is not wanted.
+    subject = (
+        f'visual for a Meik Labs pitch-deck slide titled "{_clean(title)}" ({slide.name})'
+        if allow_text
+        else f"visual for a Meik Labs pitch-deck slide about {message or _clean(title)} ({slide.name})"
+    )
     return _join(
         [
-            f"visual for a Meik Labs pitch-deck slide titled \"{_clean(title)}\" ({slide.name})",
+            subject,
             slide.prompt,
             message_clause,
             style.prompt,
             _palette_clause(palette, strict_palette),
             "presentation-ready composition, readable from across a room at 16:9",
             _text_space_clause(text_space or slide.default_text_space),
+            None if allow_text else "do not write the slide title or any headline into the image",
             _faces_clause(style, allow_text),
         ]
     )
@@ -263,6 +276,8 @@ def suggest_alt_text(
         "brand-light": "en violeta y magenta sobre blanco",
         "brand-mono": "en violeta monocromático",
         "neutral": "en grises neutros con acento violeta",
+        "natural": "",
+        "editorial-natural": "",
         "warm": "en tonos cálidos con base violeta",
         "cool": "en azules fríos con acento violeta",
         "none": "",

@@ -34,12 +34,33 @@ Todas las herramientas de generación aceptan `output` para controlar tamaño, f
 Estilos: `abstract-geometric`, `gradient-mesh`, `quiet-surface`, `isometric-tech`, `flat-vector`,
 `line-art`, `editorial-photo`, `data-viz`, `glass-ui`, `topographic`, `collage`, `blueprint`.
 
-Paletas: `brand-dark`, `brand-light`, `brand-mono`, `neutral`, `warm`, `cool`, `none`.
+Paletas: `brand-dark`, `brand-light`, `brand-mono`, `neutral`, `editorial-natural`, `warm`, `cool`,
+`none`.
 
 Registro de blog (tono relajado, irónico y absurdo): `blog-satire`, `blog-diagram`, `blog-mascot`.
 
 Arquetipos de slide: `title`, `problem`, `solution`, `product`, `market`, `traction`, `competition`,
 `team`, `roadmap`, `business-model`, `ask`, `quote`.
+
+## Skill para agentes (Claude Code / Copilot / Codex)
+
+`skills/meik-images/` empaqueta el uso del servidor como *skill*: cuándo llamar cada herramienta,
+qué preset de tamaño toca, el registro editorial del blog, la atribución de Unsplash y cómo
+reintentar una publicación.
+
+```
+skills/meik-images/SKILL.md               decisión de herramienta + reglas + ejemplos
+skills/meik-images/references/sizes.md    los 22 presets, salida nativa y formatos
+skills/meik-images/references/blog-register.md  reglas, recetas y ejemplos reales del blog
+skills/meik-images/references/publishing.md     SFTP/cPanel, diagnóstico y Unsplash
+```
+
+Instalarla en el cliente (copia la carpeta al directorio de skills del agente):
+
+```powershell
+# Claude Code / Copilot (skills de usuario)
+Copy-Item -Recurse skills\meik-images $env:USERPROFILE\.copilot\skills\
+```
 
 ## Instalación local
 
@@ -398,6 +419,7 @@ meik_image/media.py     Publicación SFTP/FTP al media server y diagnóstico
 meik_image/imaging.py   Detección de formato y ajuste del payload inline
 meik_image/storage.py   Guardado local + sidecar JSON, listado y carga segura
 meik_image/tools.py     Herramientas MCP
+skills/meik-images/     Skill para agentes (SKILL.md + references/)
 tests/                  pytest (sin red)
 ```
 

@@ -1,0 +1,27 @@
+[project]
+name = "mcp-meik-image"
+version = "1.0.0"
+description = "Meik Labs image generation MCP server (Recraft V4.1 Flash V2 via OpenRouter)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp==4.2.0",
+    "httpx==0.28.1",
+    "pillow==13.0.0",
+    "python-dotenv==1.2.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

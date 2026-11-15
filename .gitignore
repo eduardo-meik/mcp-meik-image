@@ -1,0 +1,21 @@
+# Secrets
+.env
+.env.local
+
+# Generado
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+output/
+dist/
+build/
+*.egg-info/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Nota local de límites de modelos
+model-limits-openrouter.md

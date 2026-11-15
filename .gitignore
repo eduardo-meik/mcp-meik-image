@@ -26,3 +26,5 @@ meik_media_key
 meik_media_key.*
 _sftp_probe.py
 linkedin_img_size.md
+_scratch_*.py
+_bg_retry.py

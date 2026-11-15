@@ -75,7 +75,8 @@ def _health() -> dict:
 
 def main(argv: list[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
-    settings = configure_logging()
+    settings = load_settings()
+    configure_logging(settings)
 
     if "--check" in args:
         print(json.dumps(_health(), ensure_ascii=False, indent=2))

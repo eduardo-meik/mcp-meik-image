@@ -103,3 +103,14 @@ def test_generation_tool_reports_a_missing_key_clearly(monkeypatch, tmp_path) ->
         asyncio.run(mcp.call_tool("generate_blog_hero", {"title": "Prueba"}))
 
     assert "OPENROUTER_API_KEY" in str(excinfo.value)
+
+
+def test_health_reports_tools_and_key_state(isolated_env) -> None:
+    from main import _health
+
+    health = _health()
+
+    assert health["status"] == "ok"
+    assert health["api_key_configured"] is True
+    assert health["model"] == "recraft/recraft-v4.1-flash-v2:free"
+    assert "generate_blog_hero" in health["tools"]
